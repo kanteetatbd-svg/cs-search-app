@@ -5,8 +5,8 @@ from google.oauth2.service_account import Credentials
 import concurrent.futures
 import time
 
-st.set_page_config(page_title="CS Search v31", layout="wide")
-st.title("🚀 ระบบค้นหา CS (Version 2.0)")
+st.set_page_config(page_title="CS Search v32", layout="wide")
+st.title("🚀 ระบบค้นหา CS (V3.0)")
 
 @st.cache_resource
 def get_config():
@@ -17,7 +17,6 @@ def get_config():
     except Exception:
         return None
 
-# ฟังก์ชันจัดการชื่อคอลัมน์ซ้ำ (จาก v30)
 def make_unique(labels):
     new_labels = []
     seen = {}
@@ -33,10 +32,11 @@ def make_unique(labels):
             seen[clean_label] += 1
     return new_labels
 
-def fetch_worksheet(ws):
+# ฟังก์ชันดึงข้อมูลแบบ "ค่อยเป็นค่อยไป"
+def fetch_worksheet_safe(ws):
     try:
-        # เพิ่มการหน่วงเวลาเล็กน้อยเพื่อไม่ให้กระแทก API ของ Google แรงเกินไป
-        time.sleep(0.5) 
+        # หน่วงเวลา 1.2 วินาทีต่อแท็บ เพื่อให้มั่นใจว่าไม่เกิน 60 ครั้ง/นาที แน่นอน
+        time.sleep(1.2) 
         raw = ws.get_all_values()
         if len(raw) > 0:
             unique_headers = make_unique(raw[0])
@@ -48,8 +48,8 @@ def fetch_worksheet(ws):
             return "ERROR_QUOTA", ws.title
         return ws.title, pd.DataFrame()
 
-@st.cache_data(ttl=3600) # เพิ่มเวลาจำข้อมูลเป็น 1 ชั่วโมงเพื่อลดการดึงข้อมูลบ่อย
-def load_all_data_safe(file_id, _config):
+@st.cache_data(ttl=3600)
+def load_all_data_stable(file_id, _config):
     scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
     creds = Credentials.from_service_account_info(_config, scopes=scopes)
     client = gspread.authorize(creds)
@@ -57,15 +57,25 @@ def load_all_data_safe(file_id, _config):
     worksheets = sh.worksheets()
     
     all_data = {}
-    with st.spinner(f"🚀 กำลังดึงข้อมูล {len(worksheets)} แท็บแบบปลอดภัย..."):
-        # ลดจำนวนคนยกของลงเหลือ 5 คน เพื่อไม่ให้ Google ตกใจ
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            results = list(executor.map(fetch_worksheet, worksheets))
-            for title, df in results:
-                if title == "ERROR_QUOTA":
-                    st.error(f"⚠️ ดึงแท็บ '{df}' ไม่สำเร็จเนื่องจากโควตาเต็ม กรุณารอสัก 1 นาทีแล้วกดอัปเดตใหม่ครับ")
-                elif not df.empty:
-                    all_data[title] = df
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    
+    # เปลี่ยนมาโหลดทีละแท็บแบบต่อเนื่อง แทนการโหลดขนานแบบแรงๆ
+    for i, ws in enumerate(worksheets):
+        status_text.text(f"⏳ กำลังโหลดแท็บ: {ws.title} ({i+1}/{len(worksheets)})")
+        title, result = fetch_worksheet_safe(ws)
+        
+        if title == "ERROR_QUOTA":
+            st.warning(f"⚠️ Google ขอให้พักเครื่องครู่หนึ่ง กำลังรอเพื่อดึงแท็บ '{result}' ใหม่...")
+            time.sleep(10) # พัก 10 วินาทีถ้าติดโควตา
+            title, result = fetch_worksheet_safe(ws)
+            
+        if not isinstance(result, str) and not result.empty:
+            all_data[title] = result
+        progress_bar.progress((i + 1) / len(worksheets))
+    
+    status_text.empty()
+    progress_bar.empty()
     return all_data
 
 config = get_config()
@@ -85,9 +95,9 @@ if config:
             st.cache_data.clear()
             st.rerun()
 
-        data = load_all_data_safe(file_map[selected_file_name], config)
+        data = load_all_data_stable(file_map[selected_file_name], config)
 
-        search_query = st.text_input("🔍 ใส่ ID เพื่อค้นหา:", placeholder="เช่น 1234567")
+        search_query = st.text_input("🔍 ใส่ ID เพื่อค้นหา:", placeholder="พิมพ์เลข ID ที่ต้องการหา...")
 
         if search_query:
             found_count = 0
