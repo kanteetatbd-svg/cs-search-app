@@ -4,7 +4,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 st.set_page_config(page_title="CS Global Search", layout="wide")
-st.title("🔍 ระบบค้นหาข้อมูล CS (Version 25.0 - Global Search)")
+st.title("🔍 ระบบค้นหาข้อมูล CS (Version 2.0)")
 
 @st.cache_resource
 def get_config():
