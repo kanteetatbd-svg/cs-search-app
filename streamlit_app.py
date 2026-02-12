@@ -5,7 +5,7 @@ from google.oauth2 import service_account
 
 # ตั้งค่าหน้าจอ
 st.set_page_config(page_title="CS BigQuery Turbo", layout="wide")
-st.title("⚡ ระบบค้นหาความเร็วสูง (BigQuery Mode)")
+st.title("⚡ ระบบค้นหา)")
 
 # ฟังก์ชันเชื่อมต่อ BigQuery
 @st.cache_resource
