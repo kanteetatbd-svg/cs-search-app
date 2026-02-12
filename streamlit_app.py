@@ -3,8 +3,8 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 
-st.set_page_config(page_title="CS Global Search", layout="wide")
-st.title("🔍 ระบบค้นหาข้อมูล CS (Version 2.0)")
+st.set_page_config(page_title="CS Search All-in-One", layout="wide")
+st.title("🎯 ระบบค้นหาข้อมูลรายไอดี (จากทุกแท็บ)")
 
 @st.cache_resource
 def get_config():
@@ -20,48 +20,54 @@ config = get_config()
 
 if config:
     try:
+        # สิทธิ์การเข้าถึง
         scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
         creds = Credentials.from_service_account_info(config, scopes=scopes)
         client = gspread.authorize(creds)
         
+        # ค้นหาไฟล์ทั้งหมดที่แชร์กับบอท
         all_files = client.openall()
         
         if not all_files:
-            st.error("❌ บอทหาไฟล์ไม่เจอครับ!")
+            st.error("❌ ไม่พบไฟล์ที่แชร์กับระบบ")
         else:
             file_map = {f.title: f.id for f in all_files}
-            selected_file_name = st.selectbox("📂 เลือกไฟล์ที่ต้องการใช้งาน:", list(file_map.keys()))
+            selected_file_name = st.selectbox("📂 เลือกไฟล์ฐานข้อมูล:", list(file_map.keys()))
             
-            # ช่องค้นหาหลัก (ID เช่น 14833323)
-            search_query = st.text_input("🎯 ใส่ ID หรือข้อมูลที่ต้องการค้นหา (จะค้นหาให้ทุกแท็บ):", placeholder="เช่น 14833323")
+            # ช่องค้นหาหลัก
+            search_query = st.text_input("🔍 ใส่ ID ที่ต้องการดึงข้อมูลทั้งหมด:", placeholder="เช่น 14833323")
 
             if search_query:
-                st.divider()
-                with st.spinner(f'กำลังค้นหา "{search_query}" ในทุกแท็บ...'):
-                    sh = client.open_by_key(file_map[selected_file_name])
-                    worksheets = sh.worksheets()
-                    found_any = False
+                st.markdown(f"### 📋 ผลการค้นหาสำหรับไอดี: `{search_query}`")
+                sh = client.open_by_key(file_map[selected_file_name])
+                worksheets = sh.worksheets()
+                found_count = 0
 
-                    for ws in worksheets:
-                        raw_data = ws.get_all_values()
-                        if not raw_data: continue
-                        
-                        df = pd.DataFrame(raw_data)
-                        df.columns = df.iloc[0]
-                        df = df[1:].reset_index(drop=True)
-
-                        # ค้นหาข้อมูลในทุกคอลัมน์ของแท็บนี้
-                        result = df[df.apply(lambda row: row.astype(str).str.contains(search_query, case=False, na=False).any(), axis=1)]
-
-                        if not result.empty:
-                            found_any = True
-                            with st.expander(f"✅ พบในแท็บ: {ws.title} ({len(result)} รายการ)", expanded=True):
-                                st.dataframe(result, use_container_width=True)
+                # วนลูปหาในทุกแท็บ
+                for ws in worksheets:
+                    raw_data = ws.get_all_values()
+                    if not raw_data: continue
                     
-                    if not found_any:
-                        st.warning(f"❌ ไม่พบข้อมูล '{search_query}' ในแท็บใดเลยของไฟล์นี้")
+                    # แปลงข้อมูลดิบเป็นตาราง (ใช้แถวแรกเป็นหัวข้อของแท็บนั้นๆ)
+                    df = pd.DataFrame(raw_data)
+                    df.columns = df.iloc[0]
+                    df = df[1:].reset_index(drop=True)
+
+                    # ค้นหาไอดีในทุกคอลัมน์ของแท็บนี้
+                    result = df[df.apply(lambda row: row.astype(str).str.contains(search_query, case=False, na=False).any(), axis=1)]
+
+                    if not result.empty:
+                        found_count += 1
+                        # แสดงผลแยกตามแท็บ พร้อมหัวข้อที่ถูกต้องของแท็บนั้น
+                        with st.expander(f"📍 พบข้อมูลในแท็บ: {ws.title}", expanded=True):
+                            st.dataframe(result, use_container_width=True)
+                
+                if found_count == 0:
+                    st.warning(f"❌ ไม่พบข้อมูลไอดี '{search_query}' ในแท็บใดเลย")
+                else:
+                    st.success(f"✅ ค้นหาเสร็จสิ้น พบข้อมูลใน {found_count} แท็บ")
             else:
-                st.info("💡 พิมพ์ข้อมูลที่ต้องการค้นหาด้านบน เพื่อค้นหาจากทุกแท็บพร้อมกันครับ")
+                st.info("💡 พิมพ์ ID ด้านบนเพื่อดึงข้อมูลจากทุกแท็บมาแสดงผลพร้อมกัน")
 
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาด: {e}")
