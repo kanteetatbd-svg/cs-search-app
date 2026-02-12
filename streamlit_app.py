@@ -17,7 +17,7 @@ def get_config():
 
 config = get_config()
 # ใส่ ID ของไฟล์ที่ Duplicate มาใหม่ตรงนี้ครับพี่!
-sheet_id = "181PeVo4z0Vk6Y7YrTKujX5non-Dlyx5cah2wnCCPn_o" 
+sheet_id = "181PeVc4z0Vk6Y7YrTKujX5non-Dlyx5cah2wnCCPn_o" 
 
 @st.cache_data(ttl=300)
 def load_all_data(_config):
