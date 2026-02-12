@@ -4,7 +4,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 st.set_page_config(page_title="CS Multi-Tab Search", layout="wide")
-st.title("📂 ระบบรวมข้อมูลรายไอดี (ดึงทุกแท็บ/ทุกสถานะ)")
+st.title("📂 ระบบรวมข้อมูลรายไอดี)")
 
 @st.cache_resource
 def get_config():
