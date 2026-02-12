@@ -1,23 +1,23 @@
 import streamlit as st
 import pandas as pd
 
-# ตั้งค่าหน้าเว็บให้คลีนและกว้าง
+# 1. ตั้งค่าหน้าเว็บ
 st.set_page_config(page_title="CS Search System", layout="wide")
 
 st.title("🚀 ระบบค้นหาข้อมูล CS (Version 1.0)")
 st.markdown("---")
 
-# เชื่อมต่อไฟล์ Google Sheets ของพี่
+# 2. ลิงก์ไฟล์ Google Sheets (ปรับปรุงให้ดึงข้อมูลได้แม่นยำขึ้น)
 sheet_url = "https://docs.google.com/spreadsheets/d/1auT1zB7y9LLJ6EgIaJTjmOPQA2_HZaxhWk2qM-WZzrA/export?format=xlsx"
-
 
 @st.cache_data
 def load_data():
-    return pd.read_excel(pd.read_excel(sheet_url, ...)
+    # ใช้ลิงก์ดาวน์โหลดตรง เพื่อลดปัญหา HTTPError
+    return pd.read_excel(sheet_url, sheet_name=None, engine='openpyxl')
 
 all_sheets = load_data()
 
-# --- ส่วนของ Filter และช่องค้นหา ---
+# 3. ส่วนของ Filter และช่องค้นหา
 col1, col2 = st.columns(2)
 
 with col1:
@@ -28,9 +28,10 @@ with col2:
 
 st.markdown("---")
 
-# --- ส่วนแสดงผลตารางข้อมูล ---
+# 4. ส่วนแสดงผลตารางข้อมูล
 if search_query:
     df = all_sheets[tab_choice]
+    # ค้นหาคำที่ต้องการจากทุกช่องในแท็บนั้น
     result = df[df.apply(lambda row: row.astype(str).str.contains(search_query, case=False).any(), axis=1)]
     
     if not result.empty:
