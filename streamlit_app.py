@@ -1,53 +1,53 @@
 import streamlit as st
 import pandas as pd
 from gspread_pandas import Spread
-import traceback
 
 st.set_page_config(page_title="CS Search System", layout="wide")
-st.title("🚀 ระบบค้นหาข้อมูล CS (Version 1.0 - Debug Mode)")
+st.title("🚀 ระบบค้นหาข้อมูล CS (Version 18.0 - ทดสอบไฟล์ใหม่)")
 
 @st.cache_resource
 def get_config():
     try:
         conf = dict(st.secrets["gcp_service_account"])
-        if "\\n" in conf["private_key"]:
-            conf["private_key"] = conf["private_key"].replace("\\n", "\n")
+        conf["private_key"] = conf["private_key"].replace("\\n", "\n")
         return conf
     except Exception as e:
         st.error(f"ปัญหาที่ Secrets: {e}")
         return None
 
 config = get_config()
-sheet_id = "181PeVc4z0Vk6Y7YrTKujX5non-DIyx5cah2wnCCpn_o"
+# ใส่ ID ของไฟล์ที่ Duplicate มาใหม่ตรงนี้ครับพี่!
+sheet_id = "181PeVo4z0Vk6Y7YrTKujX5non-Dlyx5cah2wnCCPn_o" 
+
+@st.cache_data(ttl=300)
+def load_all_data(_config):
+    if not _config: return None
+    try:
+        spread = Spread(sheet_id, config=_config)
+        return {s.title: spread.sheet_to_df(index=0, sheet=s.title) for s in spread.sheets}
+    except Exception as e:
+        return str(e)
 
 if config:
-    try:
-        st.info("กำลังทดสอบดึงข้อมูล...")
-        spread = Spread(sheet_id, config=config)
+    all_sheets = load_all_data(config)
+    
+    if isinstance(all_sheets, str):
+        st.error(f"❌ ยังเชื่อมต่อไม่ได้: {all_sheets}")
+        st.info("💡 พี่อย่าลืมแชร์ไฟล์ใหม่ให้เมล cs-search-key@... ด้วยนะครับ!")
+    elif all_sheets:
+        tab_list = list(all_sheets.keys())
+        selected_tab = st.selectbox("📂 เลือกหมวดหมู่ที่ต้องการค้นหา:", tab_list)
         
-        # ดึงทุกแท็บ
-        all_tabs = {}
-        for s in spread.sheets:
-            df = spread.sheet_to_df(index=0, sheet=s.title)
-            if not df.empty:
-                all_tabs[s.title] = df
+        search_query = st.text_input(f"🔍 ค้นหาในหมวด [{selected_tab}] (พิมพ์สิ่งที่ต้องการหา):")
         
-        if all_tabs:
-            st.success(f"✅ เชื่อมต่อสำเร็จ! พบแท็บ: {', '.join(all_tabs.keys())}")
-            choice = st.selectbox("📂 เลือกหมวดหมู่:", list(all_tabs.keys()))
-            query = st.text_input(f"🔍 ค้นหาในหมวด [{choice}]:")
-            if query:
-                df_res = all_tabs[choice]
-                res = df_res[df_res.apply(lambda row: row.astype(str).str.contains(query, case=False).any(), axis=1)]
-                st.dataframe(res) if not res.empty else st.warning("ไม่พบข้อมูล")
+        if search_query:
+            df = all_sheets[selected_tab]
+            result = df[df.apply(lambda row: row.astype(str).str.contains(search_query, case=False).any(), axis=1)]
+            if not result.empty:
+                st.success(f"✅ พบข้อมูล {len(result)} รายการ")
+                st.dataframe(result, use_container_width=True)
             else:
-                st.dataframe(all_tabs[choice].head(10))
+                st.warning("❌ ไม่พบข้อมูล")
         else:
-            st.warning("⚠️ ไฟล์ว่างเปล่า หรือไม่มีข้อมูลในแท็บใดเลย")
-
-    except Exception as e:
-        st.error("❌ ตรวจพบข้อผิดพลาดขณะเชื่อมต่อ")
-        # โชว์ Error แบบละเอียดที่สุดเพื่อหาทางแก้
-        st.code(traceback.format_exc()) 
-        
-        st.info("💡 ถ้าเห็นคำว่า '403 Forbidden' หรือ 'Access Denied' แปลว่า IT บริษัทบล็อกการแชร์ให้เมลนอกองค์กรครับ")
+            st.info(f"💡 กำลังแสดงข้อมูลในแท็บ: {selected_tab}")
+            st.dataframe(all_sheets[selected_tab].head(20))
