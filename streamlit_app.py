@@ -4,9 +4,9 @@ import json
 from gspread_pandas import Spread
 
 st.set_page_config(page_title="CS Search System", layout="wide")
-st.title("🚀 ระบบค้นหาข้อมูล CS (ดึงข้อมูลทุกแท็บ)")
+st.title("🚀 ระบบค้นหาข้อมูล CS (ทุกหมวดหมู่)")
 
-# กุญแจลับที่พี่ทำผ่านแล้ว
+# รวมข้อมูลกุญแจแบบ Full Option (ครบทุกฟิลด์ที่ระบบต้องการ)
 config = {
   "type": "service_account",
   "project_id": "sturdy-sentry-487204-s4",
@@ -39,24 +39,22 @@ k16zv8pv+05zFd7wzpRz+Ub+zFDMThSG2O3Wm3MpEjkT/jjwcATJSh561WNpNXF5
 6SZbUzglN/OO4sFkoHO2jSVXWyEcSNd5E9D+wbm6ql6GVJNVsVQfrTW5rs8E0i3m
 yvS5OTW/FB7hVdn68wukD9aU
 -----END PRIVATE KEY-----""",
-  "client_email": "cs-search-key@sturdy-sentry-487204-s4.iam.gserviceaccount.com"
+  "client_email": "cs-search-key@sturdy-sentry-487204-s4.iam.gserviceaccount.com",
+  "client_id": "104477133590766151969",
+  "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+  "token_uri": "https://oauth2.googleapis.com/token",
+  "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+  "client_x509_cert_url": "https://www.googleapis.com/robot/v1/metadata/x509/cs-search-key%40sturdy-sentry-487204-s4.iam.gserviceaccount.com",
+  "universe_domain": "googleapis.com"
 }
 
 sheet_id = "1auT1zB7y9LLJ6EgIaJTjmOPQA2_HZaxhWk2qM-WZzrA"
 
-@st.cache_data(ttl=600) # เก็บ Cache ไว้ 10 นาทีเพื่อให้เว็บเร็วขึ้น
+@st.cache_data(ttl=600)
 def load_all_data():
     try:
         spread = Spread(sheet_id, config=config)
-        # วนลูปดึงทุกแท็บที่มีชื่ออยู่จริง
-        all_tabs = {}
-        for sheet in spread.sheets:
-            try:
-                df = spread.sheet_to_df(index=0, sheet=sheet.title)
-                if not df.empty:
-                    all_tabs[sheet.title] = df
-            except:
-                continue # ถ้าแท็บไหนโหลดไม่ได้ให้ข้ามไป
+        all_tabs = {s.title: spread.sheet_to_df(index=0, sheet=s.title) for s in spread.sheets if not spread.sheet_to_df(index=0, sheet=s.title).empty}
         return all_tabs
     except Exception as e:
         return str(e)
@@ -66,23 +64,18 @@ all_sheets = load_all_data()
 if isinstance(all_sheets, str):
     st.error(f"การเชื่อมต่อขัดข้อง: {all_sheets}")
 else:
-    # สร้างเมนูให้พนักงานเลือกแท็บ
     tab_list = list(all_sheets.keys())
     if tab_list:
-        selected_tab = st.selectbox("📂 เลือกหมวดหมู่ที่ต้องการค้นหา:", tab_list)
-        search_query = st.text_input(f"🔍 ค้นหาในแท็บ [{selected_tab}] (ID, IMEI, หรือชื่อ):")
+        selected_tab = st.selectbox("📂 เลือกหมวดหมู่ (แท็บ):", tab_list)
+        search_query = st.text_input(f"🔍 พิมพ์ข้อมูลที่ต้องการค้นหาใน [{selected_tab}]:")
 
         if search_query:
             df = all_sheets[selected_tab]
-            # ค้นหาทุกคอลัมน์
             result = df[df.apply(lambda row: row.astype(str).str.contains(search_query, case=False).any(), axis=1)]
-            
             if not result.empty:
                 st.success(f"✅ พบข้อมูล {len(result)} รายการ")
                 st.dataframe(result, use_container_width=True)
             else:
-                st.warning("❌ ไม่พบข้อมูลที่ตรงกัน")
-        else:
-            st.info(f"💡 กำลังแสดงข้อมูลในแท็บ: {selected_tab} (พิมพ์ด้านบนเพื่อค้นหา)")
+                st.warning("❌ ไม่พบข้อมูล")
     else:
-        st.warning("ไม่พบข้อมูลในไฟล์ Google Sheets")
+        st.info("💡 ไม่พบข้อมูลในไฟล์ หรือกำลังโหลดข้อมูล...")
