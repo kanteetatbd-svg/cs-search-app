@@ -2,11 +2,11 @@ import streamlit as st
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
-import concurrent.futures # ตัวช่วยโหลดพร้อมกัน
+import concurrent.futures
 import time
 
-st.set_page_config(page_title="CS Turbo Search", layout="wide")
-st.title("🚀 ระบบค้นหา (V 2.0)")
+st.set_page_config(page_title="CS Ultra Search v30", layout="wide")
+st.title("🚀 ระบบค้นหา CS (Version 30.0 - ป้องกันหัวตารางซ้ำ)")
 
 @st.cache_resource
 def get_config():
@@ -17,18 +17,36 @@ def get_config():
     except Exception as e:
         return None
 
-config = get_config()
+# ฟังก์ชันจัดการชื่อคอลัมน์ที่ซ้ำกัน
+def make_unique(labels):
+    new_labels = []
+    seen = {}
+    for label in labels:
+        # ถ้าชื่อว่างหรือเป็นวันที่พื้นฐาน ให้ตั้งชื่อว่า Unnamed
+        clean_label = str(label).strip()
+        if not clean_label or clean_label == "30/12/1899 0:00:00" or clean_label == "12/30/1899":
+            clean_label = "Column"
+        
+        if clean_label not in seen:
+            new_labels.append(clean_label)
+            seen[clean_label] = 1
+        else:
+            new_labels.append(f"{clean_label}.{seen[clean_label]}")
+            seen[clean_label] += 1
+    return new_labels
 
-# ฟังก์ชันดึงข้อมูล 1 แท็บ (แบบเดี่ยว)
 def fetch_worksheet(ws):
-    raw = ws.get_all_values()
-    if raw:
-        df = pd.DataFrame(raw)
-        df.columns = df.iloc[0]
-        return ws.title, df[1:].reset_index(drop=True)
-    return ws.title, pd.DataFrame()
+    try:
+        raw = ws.get_all_values()
+        if len(raw) > 1:
+            # จัดการชื่อคอลัมน์ให้ไม่ซ้ำกันก่อนสร้าง DataFrame
+            unique_headers = make_unique(raw[0])
+            df = pd.DataFrame(raw[1:], columns=unique_headers)
+            return ws.title, df
+        return ws.title, pd.DataFrame()
+    except Exception:
+        return ws.title, pd.DataFrame()
 
-# ฟังก์ชันโหลดทุกแท็บพร้อมกัน (Parallel)
 @st.cache_data(ttl=1800)
 def load_all_data_parallel(file_id, _config):
     scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
@@ -38,13 +56,15 @@ def load_all_data_parallel(file_id, _config):
     worksheets = sh.worksheets()
     
     all_data = {}
-    with st.spinner(f"🚀 กำลังเร่งสปีดดึงข้อมูลจาก {len(worksheets)} แท็บพร้อมกัน..."):
-        # ใช้ ThreadPoolExecutor เพื่อโหลดข้อมูลแบบขนาน
+    with st.spinner(f"🚀 กำลังรีดประสิทธิภาพจาก {len(worksheets)} แท็บ..."):
         with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
             results = list(executor.map(fetch_worksheet, worksheets))
             for title, df in results:
-                all_data[title] = df
+                if not df.empty:
+                    all_data[title] = df
     return all_data
+
+config = get_config()
 
 if config:
     try:
@@ -58,23 +78,20 @@ if config:
         st.sidebar.header("⚙️ เมนูควบคุม")
         selected_file_name = st.sidebar.selectbox("เลือกไฟล์:", list(file_map.keys()))
         
-        if st.sidebar.button("🔄 ล้างค่าแล้วโหลดใหม่"):
+        if st.sidebar.button("🔄 อัปเดตข้อมูลใหม่"):
             st.cache_data.clear()
             st.rerun()
 
-        # เริ่มโหลดข้อมูลแบบขนาน
         data = load_all_data_parallel(file_map[selected_file_name], config)
 
-        search_query = st.text_input("🔍 ใส่ ID เพื่อค้นหาทันที:", placeholder="เช่น 14833323")
+        search_query = st.text_input("🔍 ใส่ ID เพื่อค้นหา (ค้นหาทุกแท็บ):", placeholder="เช่น 11213671")
 
         if search_query:
-            st.markdown(f"🔍 ผลการค้นหาสำหรับ: `{search_query}`")
+            st.markdown(f"### 📊 ผลการค้นหาสำหรับ: `{search_query}`")
             found_count = 0
             
-            # ค้นหาในหน่วยความจำ (เร็วมาก)
             for tab_name, df in data.items():
-                if df.empty: continue
-                # ค้นหาแบบ Vectorized (เร็วกว่าวนลูปธรรมดา)
+                # ค้นหาในทุกคอลัมน์แบบ Case-insensitive
                 mask = df.astype(str).apply(lambda x: x.str.contains(search_query, case=False, na=False)).any(axis=1)
                 result = df[mask]
 
@@ -86,7 +103,7 @@ if config:
             if found_count == 0:
                 st.warning(f"❌ ไม่พบข้อมูล '{search_query}'")
         else:
-            st.info(f"💡 โหลดข้อมูล {len(data)} แท็บเรียบร้อย! พิมพ์ ID ด้านบนเพื่อค้นหาได้เลยครับ")
+            st.info("💡 พร้อมใช้งาน! พิมพ์ ID ด้านบนเพื่อค้นหาได้เลยครับ")
 
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาด: {e}")
