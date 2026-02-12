@@ -1,43 +1,44 @@
 import streamlit as st
 import pandas as pd
+import json
+from gspread_pandas import Spread
 
 # 1. ตั้งค่าหน้าเว็บ
 st.set_page_config(page_title="CS Search System", layout="wide")
+st.title("🚀 ระบบค้นหาข้อมูล CS (Version 3.0)")
 
-st.title("🚀 ระบบค้นหาข้อมูล CS (Version 1.0)")
-st.markdown("---")
+# 2. ดึงกุญแจลับจาก Secrets
+try:
+    secret_json = st.secrets["gcp_service_account"]["json_key"]
+    config = json.loads(secret_json)
+    sheet_id = "1auT1zB7y9LLJ6EgIaJTjmOPQA2_HZaxhWk2qM-WZzrA"
 
-# 2. ลิงก์ไฟล์ Google Sheets (ปรับปรุงให้ดึงข้อมูลได้แม่นยำขึ้น)
-sheet_url = "https://docs.google.com/spreadsheets/d/1auT1zB7y9LLJ6EgIaJTjmOPQA2_HZaxhWk2qM-WZzrA/export?format=xlsx"
+    @st.cache_data
+    def load_data_securely():
+        spread = Spread(sheet_id, config=config)
+        # ดึงทุกแท็บมาแสดงเป็นตัวเลือก
+        all_data = {sheet.title: spread.sheet_to_df(index=0, sheet=sheet.title) for sheet in spread.sheets}
+        return all_data
 
-@st.cache_data
-def load_data():
-    # ใช้ลิงก์ดาวน์โหลดตรง เพื่อลดปัญหา HTTPError
-    return pd.read_excel(sheet_url, sheet_name=None, engine='openpyxl')
+    all_sheets = load_data_securely()
 
-all_sheets = load_data()
+    # 3. ส่วนแสดงหน้าจอค้นหา
+    tab_choice = st.selectbox("📂 เลือกแท็บที่ต้องการค้นหา:", list(all_sheets.keys()))
+    search_query = st.text_input("🔍 พิมพ์ข้อมูลเพื่อค้นหา (ID, IMEI, หรือชื่อ):")
 
-# 3. ส่วนของ Filter และช่องค้นหา
-col1, col2 = st.columns(2)
-
-with col1:
-    tab_choice = st.selectbox("📂 เลือกแท็บหลักที่ต้องการค้นหา:", list(all_sheets.keys()))
-
-with col2:
-    search_query = st.text_input("🔍 พิมพ์ ID หรือ IMEI เพื่อค้นหา:", placeholder="กรอกข้อมูลที่นี่...")
-
-st.markdown("---")
-
-# 4. ส่วนแสดงผลตารางข้อมูล
-if search_query:
-    df = all_sheets[tab_choice]
-    # ค้นหาคำที่ต้องการจากทุกช่องในแท็บนั้น
-    result = df[df.apply(lambda row: row.astype(str).str.contains(search_query, case=False).any(), axis=1)]
-    
-    if not result.empty:
-        st.success(f"✅ พบข้อมูลในแท็บ {tab_choice}")
-        st.dataframe(result, use_container_width=True)
+    if search_query:
+        df = all_sheets[tab_choice]
+        # ค้นหาทุกคอลัมน์
+        result = df[df.apply(lambda row: row.astype(str).str.contains(search_query, case=False).any(), axis=1)]
+        
+        if not result.empty:
+            st.success(f"✅ พบข้อมูล {len(result)} รายการ")
+            st.dataframe(result, use_container_width=True)
+        else:
+            st.warning("❌ ไม่พบข้อมูลที่ต้องการ")
     else:
-        st.warning("❌ ไม่พบข้อมูลที่ท่านต้องการ")
-else:
-    st.info("💡 กรุณาเลือกแท็บและพิมพ์ข้อมูลเพื่อเริ่มต้นการค้นหา")
+        st.info("💡 กรุณาเลือกแท็บและพิมพ์สิ่งที่ต้องการค้นหาด้านบน")
+
+except Exception as e:
+    st.error(f"เกิดข้อผิดพลาดในการเชื่อมต่อ: {e}")
+    st.info("ตรวจสอบว่าได้แปะ Secrets ถูกต้องและแชร์ไฟล์ Google Sheets ให้ Email ของ Service Account หรือยัง")
