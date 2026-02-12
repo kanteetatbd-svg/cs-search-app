@@ -6,7 +6,7 @@ import concurrent.futures
 import time
 
 st.set_page_config(page_title="CS Ultra Search v30", layout="wide")
-st.title("🚀 ระบบค้นหา CS (Version 30.0 - ป้องกันหัวตารางซ้ำ)")
+st.title("🚀 ระบบค้นหา CS (V3.0)")
 
 @st.cache_resource
 def get_config():
