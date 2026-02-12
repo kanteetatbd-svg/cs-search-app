@@ -16,7 +16,7 @@ def get_config():
 
 config = get_config()
 # ID ที่ถูกต้องแม่นยำจากรูป image_0c27df.jpg ครับ
-sheet_id = "181PeVc4z0Vk6Y7YrTKujX5non-Dlyx5cah2wnCCPn_o" 
+sheet_id = "181PeVc4z0Vk6Y7YrTKujX5non-DIyx5cah2wnCCpn_o" 
 
 @st.cache_data(ttl=300)
 def load_all_data(_config, _id):
