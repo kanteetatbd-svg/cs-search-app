@@ -8,12 +8,12 @@ st.title("🚀 ระบบค้นหาข้อมูล CS (Version 1.0)")
 st.markdown("---")
 
 # เชื่อมต่อไฟล์ Google Sheets ของพี่
-sheet_url = "https://docs.google.com/spreadsheets/d/1auT1zB7y9LLJ6EgIaJTjmOPQA2_HZaxhWk2qM-WZzrA/edit?usp=sharing"
-export_url = sheet_url.replace('/edit?usp=sharing', '/export?format=xlsx')
+sheet_url = "https://docs.google.com/spreadsheets/d/1auT1zB7y9LLJ6EgIaJTjmOPQA2_HZaxhWk2qM-WZzrA/export?format=xlsx"
+
 
 @st.cache_data
 def load_data():
-    return pd.read_excel(export_url, sheet_name=None)
+    return pd.read_excel(pd.read_excel(sheet_url, ...)
 
 all_sheets = load_data()
 
