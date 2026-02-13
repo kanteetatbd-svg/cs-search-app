@@ -165,14 +165,14 @@ if login():
             st.session_state.logged_in = False
             st.rerun()
 
-    # --- ส่วนเนื้อหาหลัก ---
+   # --- ส่วนเนื้อหาหลัก ---
     if app_mode == "🔍 CS Smart Search":
-        st.markdown("<h1 class='main-header'>CS SEAECH</h1>", unsafe_allow_html=True)
-        target_file = 'Copy of ไฟล์เก็บเคส2025V1'
+        st.markdown("<h1 class='main-header'>CS INTELLIGENCE</h1>", unsafe_allow_html=True)
+        target_file = 'Copy of ไฟล์เก็บเคส2025V1' # ไฟล์เดิม
     else:
         st.markdown("<h1 class='main-header'>REFUND TRACKER</h1>", unsafe_allow_html=True)
-        # พี่เก็ตเปลี่ยนชื่อไฟล์ Refund ตรงนี้นะครับ
-        target_file = 'ไฟล์ข้อมูล_Refund' 
+        # 🎯 เปลี่ยนชื่อไฟล์ Refund ตรงนี้ให้ตรงกับใน Google Drive เป๊ะๆ
+        target_file = 'ปัญหา CS'
 
     # 🚀 [Performance Fix] โหลดข้อมูลมารอก่อนค้นหา เพื่อความรวดเร็ว (Pre-loading)
     with st.status(f"📡 กำลังซิงค์ข้อมูลจาก {target_file}...", expanded=False) as status:
