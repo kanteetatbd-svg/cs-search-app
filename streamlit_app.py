@@ -4,18 +4,15 @@ import gspread
 from google.oauth2.service_account import Credentials
 import datetime
 
-# --- 1. ตั้งค่าหน้าตาและการเชื่อมต่อ (รักษาไว้ครบทุกบรรทัด) ---
+# --- 1. การตั้งค่าหน้าตาและการเชื่อมต่อ (รักษาไว้ครบทุกบรรทัด) ---
 st.set_page_config(page_title="CS Smart Search & Edit", page_icon="🔍", layout="wide")
 
-# 🎯 ฟังก์ชันจัดการ Theme (กลางวัน/กลางคืน) - ห้ามลบ
+# 🎯 ฟังก์ชันจัดการ Theme (กลางวัน/กลางคืน)
 if "theme" not in st.session_state:
     st.session_state.theme = "dark"
 
 def toggle_theme():
-    if st.session_state.theme == "light":
-        st.session_state.theme = "dark"
-    else:
-        st.session_state.theme = "light"
+    st.session_state.theme = "dark" if st.session_state.theme == "light" else "light"
 
 # --- 🎯 ระบบจัดการผู้ใช้ ---
 USER_DB = {
@@ -49,7 +46,8 @@ def get_sheets_client():
     creds = Credentials.from_service_account_file('key.json', scopes=['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive'])
     return gspread.authorize(creds)
 
-@st.cache_data(ttl=60)
+# 🚀 [Restored Section] ระบบโหลดข้อมูลพร้อม Smart Header และการจัดการคอลัมน์ซ้ำ
+@st.cache_data(ttl=3600)
 def load_all_data():
     gc = get_sheets_client()
     sh = gc.open('Copy of ไฟล์เก็บเคส2025V1')
@@ -59,16 +57,18 @@ def load_all_data():
         if not data: continue
         df = pd.DataFrame(data)
         
-        # --- [Smart Header] ค้นหาหัวตารางอัตโนมัติ (ห้ามลบ) ---
+        # --- [จุดที่เคยหาย 1] วนลูปหาแถวที่เป็นหัวตาราง (Smart Header) ---
         header_idx = 0
         for i in range(min(15, len(df))):
-            if sum(1 for x in df.iloc[i] if str(x).strip() != "") > 5:
+            # นับจำนวนช่องที่มีข้อมูล ถ้าเกิน 5 ช่อง ให้ถือว่าเป็นหัวตาราง
+            non_empty_count = sum(1 for x in df.iloc[i] if str(x).strip() != "")
+            if non_empty_count > 5:
                 header_idx = i
                 break
         
         headers = df.iloc[header_idx].astype(str).tolist()
         
-        # --- [ล้างชื่อคอลัมน์ซ้ำ] (ห้ามลบ) ---
+        # --- [จุดที่เคยหาย 2] ระบบจัดการชื่อคอลัมน์ซ้ำหรือว่าง (Duplicate Handler) ---
         final_headers = []
         for i, h in enumerate(headers):
             clean_h = h.strip()
@@ -77,40 +77,41 @@ def load_all_data():
             else:
                 final_headers.append(clean_h)
         
+        # เก็บเลขแถวจริง (sheet_row) ไว้ใช้ตอนอัปเดตข้อมูล
         df['sheet_row'] = df.index + 1
         df.columns = final_headers + ['sheet_row']
+        
+        # เก็บข้อมูลจริงโดยตัดแถวหัวตารางทิ้งไป
         all_tabs[ws.title] = df.iloc[header_idx+1:].reset_index(drop=True)
     return all_tabs
 
 # --- 2. เริ่มทำงานเมื่อล็อกอินผ่าน ---
 if login():
     with st.sidebar:
-        # 🎯 ปรับปรุงส่วนรูป: เอาคำว่า "โปรไฟล์" ออก และขยายรูปให้ใหญ่ขึ้น
-        st.write("") # เพิ่มช่องว่างด้านบนเล็กน้อย
-        
-        # ปรับสัดส่วน Column เพื่อให้รูปขยายใหญ่ขึ้น (ใช้สัดส่วน 1:10:1 เพื่อดันรูปให้เต็มพื้นที่)
+        # ส่วนรูปโปรไฟล์ใหญ่ขึ้น และไม่มีคำว่าโปรไฟล์
+        st.write("") 
         _, col_img, _ = st.columns([0.1, 2.5, 0.1])
         with col_img:
             if "user_pic" in st.session_state:
-                # ขยายความกว้างรูป และจัดกึ่งกลาง
                 st.image(st.session_state.user_pic, use_container_width=True)
         
-        # ชื่อผู้ใช้จัดกลาง
         st.markdown(f"<h3 style='text-align: center;'>คุณ {st.session_state.username}</h3>", unsafe_allow_html=True)
         
-        # 🌗 ปุ่มเปลี่ยนโหมด (รักษาฟังก์ชันเดิม)
+        # ปุ่มเปลี่ยนโหมด (รักษาฟังก์ชันเดิม)
         theme_icon = "☀️" if st.session_state.theme == "dark" else "🌙"
-        theme_label = "โหมดกลางวัน" if st.session_state.theme == "dark" else "โหมดกลางคืน"
-        if st.button(f"{theme_icon} {theme_label}", use_container_width=True):
+        if st.button(f"{theme_icon} เปลี่ยนโหมดธีม", use_container_width=True):
             toggle_theme()
             st.rerun()
 
-        # ส่วนตั้งค่ารูป (ห้ามลบ)
+        # ปุ่มรีเฟรชข้อมูล (Sync) เพื่อดึงจาก Google Sheets ใหม่
+        if st.button("🔄 รีเฟรชข้อมูล (Sync)", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
+
         with st.expander("⚙️ ตั้งค่ารูปโปรไฟล์"):
             uploaded_file = st.file_uploader("เลือกรูปภาพใหม่", type=["jpg", "png", "jpeg"])
             if uploaded_file is not None:
                 st.session_state.user_pic = uploaded_file
-                st.success("อัปเดตรูปเรียบร้อย!")
                 st.rerun()
 
         st.divider()
@@ -118,17 +119,22 @@ if login():
             st.session_state.logged_in = False
             st.rerun()
 
-    # --- ส่วนเนื้อหาหลัก (รักษาไว้ครบถ้วน 100%) ---
-    st.title("🔍 CS Case Search & Editor")
+    # --- ส่วนเนื้อหาหลัก: ค้นหาและแก้ไข ---
+    st.title("🔍 CS Case Instant Search")
     
-    master_data = load_all_data()
-    search_val = st.text_input("🔍 ค้นหา ID หรือ IMEI เพื่อแก้ไข:", placeholder="พิมพ์ข้อมูลที่นี่...")
+    # ดึงข้อมูลมาเตรียมไว้ (เพื่อให้ค้นหาเจอทันที)
+    with st.status("📡 กำลังเตรียมข้อมูลเพื่อการค้นหาที่รวดเร็ว...", expanded=False) as status:
+        master_data = load_all_data()
+        status.update(label="✅ ข้อมูลพร้อมใช้งาน! ค้นหาได้ทันที", state="complete")
+
+    search_val = st.text_input("🔍 ค้นหา ID หรือ IMEI:", placeholder="พิมพ์ข้อมูลแล้วผลลัพธ์จะเด้งขึ้นมาทันที...")
 
     if search_val:
         q = search_val.strip().lower()
         found_any = False
 
         for title, df in master_data.items():
+            # ค้นหาในหน่วยความจำ (Instant Search)
             mask = df.drop(columns=['sheet_row']).astype(str).apply(lambda r: r.str.lower().str.contains(q).any(), axis=1)
             res_df = df[mask]
 
@@ -136,7 +142,7 @@ if login():
                 found_any = True
                 st.markdown(f"### 📂 เจอข้อมูลในแท็บ: **{title}**")
                 
-                # --- Dropdown การแบน/สถานะ (รักษาไว้ตามเดิม) ---
+                # ระบบ Dropdown (รักษาไว้ครบถ้วน)
                 editor_config = {
                     "sheet_row": None, 
                     "การแบน": st.column_config.SelectboxColumn("การแบน", options=["ปลด", "แบน", "รอตรวจสอบ"], required=True),
@@ -151,8 +157,8 @@ if login():
                     key=f"editor_{title}_{search_val}"
                 )
 
-                if st.button(f"💾 ยืนยันการแก้ไขใน {title}", key=f"btn_{title}"):
-                    with st.spinner('กำลังบันทึก...'):
+                if st.button(f"💾 บันทึกแก้ไข {title}", key=f"btn_{title}"):
+                    with st.spinner('กำลังเซฟข้อมูล...'):
                         try:
                             gc = get_sheets_client()
                             sh = gc.open('Copy of ไฟล์เก็บเคส2025V1')
@@ -161,8 +167,11 @@ if login():
                                 actual_row = int(row['sheet_row'])
                                 updated_values = row.drop('sheet_row').astype(str).tolist()
                                 ws.update(f"A{actual_row}", [updated_values])
-                            st.toast(f"✅ บันทึกข้อมูลสำเร็จ!", icon="💾")
+                            st.toast("✅ บันทึกสำเร็จ!", icon="💾")
                             st.cache_data.clear()
                         except Exception as e:
-                            st.error(f"❌ บันทึกไม่สำเร็จ: {e}")
+                            st.error(f"❌ พัง: {e}")
                 st.divider()
+
+        if not found_any:
+            st.warning(f"ไม่พบข้อมูลสำหรับ `{search_val}`")
