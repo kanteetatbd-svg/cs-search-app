@@ -67,7 +67,7 @@ def login():
         st.session_state.logged_in = False
     
     if not st.session_state.logged_in:
-        st.markdown("<h1 style='text-align: center; color: white; padding-top: 100px;'>💎 CS INTELLIGENCE</h1>", unsafe_allow_html=True)
+        st.markdown("<h1 style='text-align: center; color: white; padding-top: 100px;'>💎 CS SEARCH</h1>", unsafe_allow_html=True)
         cols = st.columns([1, 2, 1])
         with cols[1]:
             with st.form("login_form"):
