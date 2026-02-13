@@ -173,7 +173,7 @@ if login():
             st.rerun()
 
     # --- MAIN CONTENT AREA ---
-    st.markdown("<h1 class='main-header'>SEARCH INTELLIGENCE</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='main-header'>SEARCH HERE</h1>", unsafe_allow_html=True)
     
     # ระบบ Instant Search (ดึงข้อมูลเตรียมไว้ล่วงหน้าเพื่อความไว)
     with st.status("📡 Connecting to Central Database...", expanded=False) as status:
