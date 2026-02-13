@@ -4,7 +4,7 @@ from google.cloud import bigquery
 from google.oauth2 import service_account
 
 st.set_page_config(page_title="CS Turbo Search", layout="wide")
-st.title("🚀 ระบบค้นหาข้อมูล (เวอร์ชันสแกนละเอียด)")
+st.title("🚀 ระบบค้นหาข้อมูล CS")
 
 @st.cache_resource
 def get_bq_client():
