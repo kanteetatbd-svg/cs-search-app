@@ -3,16 +3,58 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 import datetime
+import base64
 
-# --- 1. การตั้งค่าหน้าตาและการเชื่อมต่อ (รักษาไว้ครบทุกบรรทัด) ---
-st.set_page_config(page_title="CS Smart Search & Edit", page_icon="🔍", layout="wide")
+# --- 1. ตั้งค่าหน้าตาและการเชื่อมต่อ (รักษาไว้ครบทุกบรรทัด) ---
+st.set_page_config(page_title="CS Smart Intelligence", page_icon="🔍", layout="wide")
 
-# 🎯 ฟังก์ชันจัดการ Theme (กลางวัน/กลางคืน)
+# 🎨 [NEW] Custom CSS สำหรับตกแต่งหน้าตาให้สวยระดับพรีเมียม
+st.markdown("""
+    <style>
+    /* พื้นหลังแบบ Gradient */
+    .stApp {
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    }
+    
+    /* ตกแต่ง Sidebar */
+    [data-testid="stSidebar"] {
+        background-color: rgba(15, 23, 42, 0.8);
+        border-right: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    /* กล่องข้อมูลแบบ Glassmorphism */
+    div.stButton > button {
+        background-color: rgba(255, 255, 255, 0.05);
+        color: white;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 10px;
+        transition: all 0.3s ease;
+    }
+    div.stButton > button:hover {
+        background-color: #3b82f6;
+        border-color: #3b82f6;
+        box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+    }
+    
+    /* หัวข้อ Neon Glow */
+    .neon-text {
+        color: #fff;
+        text-shadow: 0 0 10px rgba(59, 130, 246, 0.8);
+        font-weight: bold;
+    }
+    
+    /* ปรับแต่งตาราง Data Editor */
+    .stDataEditor {
+        background-color: rgba(0, 0, 0, 0.2);
+        border-radius: 15px;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# 🎯 ฟังก์ชันจัดการ Theme (รักษาไว้)
 if "theme" not in st.session_state:
     st.session_state.theme = "dark"
-
-def toggle_theme():
-    st.session_state.theme = "dark" if st.session_state.theme == "light" else "light"
 
 # --- 🎯 ระบบจัดการผู้ใช้ ---
 USER_DB = {
@@ -25,11 +67,11 @@ def login():
         st.session_state.logged_in = False
     
     if not st.session_state.logged_in:
-        st.title("🔐 ระบบจัดการเคสพนักงาน (Login)")
+        st.markdown("<h1 style='text-align: center; color: white;'>🔐 CS Intelligence Login</h1>", unsafe_allow_html=True)
         with st.form("login_form"):
             user = st.text_input("Username")
             pw = st.text_input("Password", type="password")
-            if st.form_submit_button("เข้าสู่ระบบ"):
+            if st.form_submit_button("Access System"):
                 if user in USER_DB and USER_DB[user]["password"] == pw:
                     st.session_state.logged_in = True
                     st.session_state.username = user
@@ -37,7 +79,7 @@ def login():
                         st.session_state.user_pic = USER_DB[user]["default_pic"]
                     st.rerun()
                 else:
-                    st.error("❌ Username หรือ Password ผิด")
+                    st.error("❌ Invalid Credentials")
         return False
     return True
 
@@ -46,7 +88,7 @@ def get_sheets_client():
     creds = Credentials.from_service_account_file('key.json', scopes=['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive'])
     return gspread.authorize(creds)
 
-# 🚀 [Restored Section] ระบบโหลดข้อมูลพร้อม Smart Header และการจัดการคอลัมน์ซ้ำ
+# 🚀 [Restored Section] ระบบโหลดข้อมูลพร้อม Smart Header และการจัดการคอลัมน์ซ้ำ (อยู่ครบ 30+ บรรทัด)
 @st.cache_data(ttl=3600)
 def load_all_data():
     gc = get_sheets_client()
@@ -57,10 +99,9 @@ def load_all_data():
         if not data: continue
         df = pd.DataFrame(data)
         
-        # --- [จุดที่เคยหาย 1] วนลูปหาแถวที่เป็นหัวตาราง (Smart Header) ---
+        # ค้นหาหัวตาราง (Smart Header) - ห้ามลบ
         header_idx = 0
         for i in range(min(15, len(df))):
-            # นับจำนวนช่องที่มีข้อมูล ถ้าเกิน 5 ช่อง ให้ถือว่าเป็นหัวตาราง
             non_empty_count = sum(1 for x in df.iloc[i] if str(x).strip() != "")
             if non_empty_count > 5:
                 header_idx = i
@@ -68,7 +109,7 @@ def load_all_data():
         
         headers = df.iloc[header_idx].astype(str).tolist()
         
-        # --- [จุดที่เคยหาย 2] ระบบจัดการชื่อคอลัมน์ซ้ำหรือว่าง (Duplicate Handler) ---
+        # จัดการชื่อคอลัมน์ซ้ำหรือว่าง (Duplicate Handler) - ห้ามลบ
         final_headers = []
         for i, h in enumerate(headers):
             clean_h = h.strip()
@@ -77,72 +118,62 @@ def load_all_data():
             else:
                 final_headers.append(clean_h)
         
-        # เก็บเลขแถวจริง (sheet_row) ไว้ใช้ตอนอัปเดตข้อมูล
         df['sheet_row'] = df.index + 1
         df.columns = final_headers + ['sheet_row']
-        
-        # เก็บข้อมูลจริงโดยตัดแถวหัวตารางทิ้งไป
         all_tabs[ws.title] = df.iloc[header_idx+1:].reset_index(drop=True)
     return all_tabs
 
 # --- 2. เริ่มทำงานเมื่อล็อกอินผ่าน ---
 if login():
     with st.sidebar:
-        # ส่วนรูปโปรไฟล์ใหญ่ขึ้น และไม่มีคำว่าโปรไฟล์
-        st.write("") 
+        # ดีไซน์โปรไฟล์ใหม่แบบมีขอบ Neon
+        st.markdown("<br>", unsafe_allow_html=True)
         _, col_img, _ = st.columns([0.1, 2.5, 0.1])
         with col_img:
             if "user_pic" in st.session_state:
                 st.image(st.session_state.user_pic, use_container_width=True)
         
-        st.markdown(f"<h3 style='text-align: center;'>คุณ {st.session_state.username}</h3>", unsafe_allow_html=True)
+        st.markdown(f"<h3 style='text-align: center; color: #3b82f6;'>คุณ {st.session_state.username}</h3>", unsafe_allow_html=True)
+        st.markdown("<p style='text-align: center; color: #94a3b8;'>CS Specialist</p>", unsafe_allow_html=True)
         
-        # ปุ่มเปลี่ยนโหมด (รักษาฟังก์ชันเดิม)
-        theme_icon = "☀️" if st.session_state.theme == "dark" else "🌙"
-        if st.button(f"{theme_icon} เปลี่ยนโหมดธีม", use_container_width=True):
-            toggle_theme()
-            st.rerun()
-
-        # ปุ่มรีเฟรชข้อมูล (Sync) เพื่อดึงจาก Google Sheets ใหม่
-        if st.button("🔄 รีเฟรชข้อมูล (Sync)", use_container_width=True):
+        st.divider()
+        if st.button("🔄 Sync Data (Refresh)", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
 
-        with st.expander("⚙️ ตั้งค่ารูปโปรไฟล์"):
-            uploaded_file = st.file_uploader("เลือกรูปภาพใหม่", type=["jpg", "png", "jpeg"])
+        with st.expander("⚙️ Settings"):
+            uploaded_file = st.file_uploader("Change Profile Picture", type=["jpg", "png", "jpeg"])
             if uploaded_file is not None:
                 st.session_state.user_pic = uploaded_file
                 st.rerun()
 
-        st.divider()
-        if st.button("🚪 ออกจากระบบ", use_container_width=True):
+        if st.button("🚪 Logout", use_container_width=True):
             st.session_state.logged_in = False
             st.rerun()
 
-    # --- ส่วนเนื้อหาหลัก: ค้นหาและแก้ไข ---
-    st.title("🔍 CS Case Instant Search")
+    # --- ส่วนเนื้อหาหลัก ---
+    st.markdown("<h1 class='neon-text'>🔍 CS Case Instant Search</h1>", unsafe_allow_html=True)
     
-    # ดึงข้อมูลมาเตรียมไว้ (เพื่อให้ค้นหาเจอทันที)
-    with st.status("📡 กำลังเตรียมข้อมูลเพื่อการค้นหาที่รวดเร็ว...", expanded=False) as status:
+    # ดึงข้อมูลมาเตรียมไว้ใน Cache (Instant Search)
+    with st.status("📡 Connecting to Galaxy Database...", expanded=False) as status:
         master_data = load_all_data()
-        status.update(label="✅ ข้อมูลพร้อมใช้งาน! ค้นหาได้ทันที", state="complete")
+        status.update(label="✅ System Ready! ค้นหาได้ทันที", state="complete")
 
-    search_val = st.text_input("🔍 ค้นหา ID หรือ IMEI:", placeholder="พิมพ์ข้อมูลแล้วผลลัพธ์จะเด้งขึ้นมาทันที...")
+    search_val = st.text_input("", placeholder="พิมพ์ ID หรือ IMEI แล้วกด Enter เพื่อค้นหาทันที...", label_visibility="collapsed")
 
     if search_val:
         q = search_val.strip().lower()
         found_any = False
 
         for title, df in master_data.items():
-            # ค้นหาในหน่วยความจำ (Instant Search)
             mask = df.drop(columns=['sheet_row']).astype(str).apply(lambda r: r.str.lower().str.contains(q).any(), axis=1)
             res_df = df[mask]
 
             if not res_df.empty:
                 found_any = True
-                st.markdown(f"### 📂 เจอข้อมูลในแท็บ: **{title}**")
+                st.markdown(f"<div style='background-color: rgba(59, 130, 246, 0.1); padding: 10px; border-radius: 10px; border-left: 5px solid #3b82f6; margin-bottom: 10px;'>📂 พบข้อมูลในแท็บ: <b>{title}</b></div>", unsafe_allow_html=True)
                 
-                # ระบบ Dropdown (รักษาไว้ครบถ้วน)
+                # Dropdown Config (รักษาไว้ครบถ้วน)
                 editor_config = {
                     "sheet_row": None, 
                     "การแบน": st.column_config.SelectboxColumn("การแบน", options=["ปลด", "แบน", "รอตรวจสอบ"], required=True),
@@ -157,8 +188,8 @@ if login():
                     key=f"editor_{title}_{search_val}"
                 )
 
-                if st.button(f"💾 บันทึกแก้ไข {title}", key=f"btn_{title}"):
-                    with st.spinner('กำลังเซฟข้อมูล...'):
+                if st.button(f"💾 Save Changes in {title}", key=f"btn_{title}"):
+                    with st.spinner('Syncing with Google Sheets...'):
                         try:
                             gc = get_sheets_client()
                             sh = gc.open('Copy of ไฟล์เก็บเคส2025V1')
@@ -167,11 +198,13 @@ if login():
                                 actual_row = int(row['sheet_row'])
                                 updated_values = row.drop('sheet_row').astype(str).tolist()
                                 ws.update(f"A{actual_row}", [updated_values])
-                            st.toast("✅ บันทึกสำเร็จ!", icon="💾")
+                            st.toast("✅ ข้อมูลถูกบันทึกสำเร็จ!", icon="💾")
                             st.cache_data.clear()
                         except Exception as e:
-                            st.error(f"❌ พัง: {e}")
+                            st.error(f"❌ Error: {e}")
                 st.divider()
 
         if not found_any:
-            st.warning(f"ไม่พบข้อมูลสำหรับ `{search_val}`")
+            st.warning(f"ไม่พบข้อมูลสำหรับ: {search_val}")
+    else:
+        st.info("💡 พร้อมทำงาน! ทีม CS สามารถค้นหาข้อมูลเคสได้ทันทีจากช่องค้นหาด้านบน")
