@@ -1,49 +1,70 @@
 import streamlit as st
+import pandas as pd
 from google.cloud import bigquery
 from google.oauth2 import service_account
 
-# --- 1. ตั้งค่าพื้นฐาน ---
-st.set_page_config(page_title="CS Search Reset", layout="wide")
-st.title("🚀 ระบบค้นหาข้อมูล (เวอร์ชัน Reset)")
+st.set_page_config(page_title="BigQuery Multi-Search", layout="wide")
+st.title("🚀 ระบบค้นหา ID ทุกตารางใน BigQuery")
 
-# --- 2. เชื่อมต่อกุญแจโดยตรงจากไฟล์ key.json ---
+# --- 1. เชื่อมต่อกุญแจ (ใช้ Scopes ให้ครบเพื่ออ่าน Sheets ที่เชื่อมกับ BigQuery) ---
 @st.cache_resource
-def get_client():
+def get_bq_client():
     try:
-        # สิทธิ์การเข้าถึง BigQuery และ Google Drive (Sheets)
         scopes = [
             "https://www.googleapis.com/auth/cloud-platform",
-            "https://www.googleapis.com/auth/drive"
+            "https://www.googleapis.com/auth/drive",
+            "https://www.googleapis.com/auth/bigquery"
         ]
-        # อ่านจากไฟล์ที่พี่อัปโหลดขึ้น GitHub เป๊ะๆ
         creds = service_account.Credentials.from_service_account_file('key.json', scopes=scopes)
         return bigquery.Client(credentials=creds, project=creds.project_id)
     except Exception as e:
-        st.error(f"❌ ระบบหาไฟล์ key.json ไม่เจอ หรือไฟล์พัง: {e}")
+        st.error(f"❌ กุญแจมีปัญหา: {e}")
         return None
 
-client = get_client()
+client = get_bq_client()
 
-# --- 3. ส่วนค้นหาข้อมูล ---
-search_id = st.text_input("🔍 กรอก ID เพื่อค้นหา (เช่น 9300191):")
+# --- 2. ส่วนการค้นหา ---
+search_id = st.text_input("🔍 กรอก ID พนักงานเพื่อค้นหาในทุกตาราง:", placeholder="เช่น 9300191")
 
 if client and search_id:
-    # ระบุชื่อตารางของพี่
-    TABLE_ID = "sturdy-sentry-487204-s4.cs_database.case_2025"
-    
-    # ใช้ Query แบบกว้าง ค้นหาใน string_field_4 (คอลัมน์ E ใน Sheets)
-    sql = f"SELECT * FROM `{TABLE_ID}` WHERE CAST(string_field_4 AS STRING) = '{search_id}'"
+    # ระบุชื่อโปรเจกต์และ Dataset
+    project_id = "sturdy-sentry-487204-s4"
+    dataset_id = "cs_database"
     
     try:
-        df = client.query(sql).to_dataframe()
-        if not df.empty:
-            st.success(f"✅ พบข้อมูลสำหรับ ID: {search_id}")
-            st.dataframe(df, use_container_width=True)
-        else:
-            st.warning(f"❌ ไม่พบข้อมูล '{search_id}' ในคอลัมน์ string_field_4")
-            # ถ้าหาไม่เจอ ให้โชว์ 3 แถวแรกมาเช็กชื่อคอลัมน์กันตรงๆ เลยพี่
-            st.info("ตรวจสอบชื่อคอลัมน์จริงจากตารางด้านล่างนี้ครับ:")
-            preview = client.query(f"SELECT * FROM `{TABLE_ID}` LIMIT 3").to_dataframe()
-            st.dataframe(preview)
+        # ดึงรายชื่อตารางทั้งหมดที่มีใน Dataset นี้ (แทนการเปิดดูทุกแท็บ)
+        tables = client.list_tables(f"{project_id}.{dataset_id}")
+        
+        found_any = False
+        st.markdown(f"### 🔎 ผลการค้นหาสำหรับ ID: `{search_id}`")
+
+        for table in tables:
+            full_table_id = f"{project_id}.{dataset_id}.{table.table_id}"
+            
+            # ดึงหัวตารางมาเช็กก่อน 1 แถวเพื่อหาชื่อคอลัมน์
+            check_df = client.query(f"SELECT * FROM `{full_table_id}` LIMIT 1").to_dataframe()
+            cols = check_df.columns.tolist()
+            
+            # สร้างคำสั่ง SQL ค้นหา (ค้นหาในทุกคอลัมน์ที่เป็นไปได้ เผื่อ ID อยู่คนละที่)
+            # เราจะสร้าง WHERE col1='ID' OR col2='ID' ...
+            where_clause = " OR ".join([f"CAST({col} AS STRING) = '{search_id}'" for col in cols])
+            sql = f"SELECT * FROM `{full_table_id}` WHERE {where_clause}"
+            
+            try:
+                result_df = client.query(sql).to_dataframe()
+                
+                if not result_df.empty:
+                    found_any = True
+                    # แยกโชว์ตามชื่อตาราง (เหมือนแยกตามแท็บ)
+                    with st.expander(f"✅ พบข้อมูลในตาราง: {table.table_id}", expanded=True):
+                        st.dataframe(result_df, use_container_width=True)
+            except:
+                continue # ข้ามตารางที่มีปัญหาเรื่องโครงสร้าง
+
+        if not found_any:
+            st.warning(f"❌ ไม่พบ ID '{search_id}' ในตารางใดๆ เลย")
+
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาด: {e}")
+else:
+    st.info("💡 ใส่ ID ด้านบน ระบบจะควานหาข้อมูลจากทุกตารางใน BigQuery ให้ทันทีครับ")
