@@ -3,74 +3,62 @@ import pandas as pd
 from google.cloud import bigquery
 from google.oauth2 import service_account
 
-# ตั้งค่าหน้าจอให้กว้างเพื่อดูตารางง่ายๆ
-st.set_page_config(page_title="CS Case Tracker", layout="wide")
-st.title("🚀 ระบบค้นหาเคสพนักงาน (แยกตามแท็บ)")
+st.set_page_config(page_title="CS Turbo Search", layout="wide")
+st.title("🚀 ระบบค้นหาข้อมูล (เวอร์ชันสแกนละเอียด)")
 
-# --- 1. เชื่อมต่อกุญแจไฟล์ key.json ---
 @st.cache_resource
 def get_bq_client():
     try:
-        scopes = [
-            "https://www.googleapis.com/auth/cloud-platform",
-            "https://www.googleapis.com/auth/drive",
-            "https://www.googleapis.com/auth/bigquery"
-        ]
+        scopes = ["https://www.googleapis.com/auth/cloud-platform", "https://www.googleapis.com/auth/drive"]
         creds = service_account.Credentials.from_service_account_file('key.json', scopes=scopes)
         return bigquery.Client(credentials=creds, project=creds.project_id)
     except Exception as e:
-        st.error(f"❌ ระบบหากุญแจไม่เจอ: {e}")
+        st.error(f"❌ กุญแจพัง: {e}")
         return None
 
 client = get_bq_client()
-
-# --- 2. ส่วนการค้นหา ---
-search_id = st.text_input("🔍 กรอก ID พนักงานที่ต้องการติดตามเคส:", placeholder="เช่น 9300191")
+search_id = st.text_input("🔍 กรอก ID พนักงาน (พิมพ์แค่เลขก็ได้ครับ):")
 
 if client and search_id:
     PROJECT_ID = "sturdy-sentry-487204-s4"
     DATASET_ID = "cs_database"
+    search_val = search_id.strip() # ตัดช่องว่างหน้า-หลังที่พี่อาจจะเผลอพิมพ์ไป
     
     try:
-        # ดึงรายชื่อตารางทั้งหมด (ซึ่งก็คือชื่อแท็บใน Sheets ของพี่)
         tables = client.list_tables(f"{PROJECT_ID}.{DATASET_ID}")
-        
-        found_results = {} # เก็บข้อมูล { 'ชื่อแท็บ': DataFrame }
+        found_results = {}
 
-        with st.spinner('กำลังค้นหาข้อมูลจากทุกแท็บ...'):
-            for table in tables:
-                table_full_id = f"{PROJECT_ID}.{DATASET_ID}.{table.table_id}"
-                
-                # เช็กหัวตารางเพื่อหาชื่อคอลัมน์ทั้งหมด
-                sample = client.query(f"SELECT * FROM `{table_full_id}` LIMIT 1").to_dataframe()
-                cols = sample.columns.tolist()
-                
-                # สร้าง SQL ค้นหา ID จากทุกคอลัมน์ในแท็บนี้ (เผื่อพี่วาง ID ไว้ไม่ตรงกัน)
-                where_clause = " OR ".join([f"CAST({c} AS STRING) = '{search_id.strip()}'" for c in cols])
-                sql = f"SELECT * FROM `{table_full_id}` WHERE {where_clause}"
-                
-                df_result = client.query(sql).to_dataframe()
-                
-                # ถ้าเจอข้อมูลในแท็บนี้ ให้เก็บไว้โชว์
-                if not df_result.empty:
-                    found_results[table.table_id] = df_result
+        for table in tables:
+            full_table_id = f"{PROJECT_ID}.{DATASET_ID}.{table.table_id}"
+            
+            # ดึงโครงสร้างตารางมาดูว่ามีคอลัมน์อะไรบ้าง
+            schema_query = f"SELECT * FROM `{full_table_id}` LIMIT 1"
+            sample_df = client.query(schema_query).to_dataframe()
+            cols = sample_df.columns.tolist()
+            
+            # --- ไม้ตาย: สร้าง Query ที่ค้นหา "ทุกคอลัมน์" และ "ใช้ LIKE" เพื่อให้เจอแม้มีช่องว่าง ---
+            # ใช้ TRIM เพื่อตัดสเปซบาร์ในฐานข้อมูลทิ้งตอนค้นหา
+            where_clauses = [f"TRIM(CAST({col} AS STRING)) LIKE '%{search_val}%'" for col in cols]
+            sql = f"SELECT * FROM `{full_table_id}` WHERE {' OR '.join(where_clauses)}"
+            
+            result_df = client.query(sql).to_dataframe()
+            if not result_df.empty:
+                found_results[table.table_id] = result_df
 
-        # --- 3. การแสดงผลแบบแยกหัวข้อตามแท็บ ---
         if found_results:
-            st.success(f"✅ พบข้อมูลของ ID `{search_id}` ใน {len(found_results)} หัวข้อ (แท็บ)")
-            
-            # สร้างแถบ Tabs ด้านบนตามชื่อแท็บที่เจอข้อมูล
-            tab_objects = st.tabs(list(found_results.keys()))
-            
-            for i, (tab_name, df) in enumerate(found_results.items()):
-                with tab_objects[i]:
-                    st.subheader(f"📂 ข้อมูลจากแท็บ: {tab_name}")
-                    # โชว์ข้อมูลเป็นตารางเหมือนใน Sheets
+            st.success(f"✅ เจอข้อมูล ID `{search_val}` แล้ว!")
+            tab_objs = st.tabs(list(found_results.keys()))
+            for i, (name, df) in enumerate(found_results.items()):
+                with tab_objs[i]:
                     st.dataframe(df, use_container_width=True)
         else:
-            st.warning(f"❌ ไม่พบข้อมูล ID `{search_id}` ในแท็บไหนเลยครับ")
+            st.warning(f"❌ ไม่พบข้อมูล `{search_val}` ในทุกแท็บ")
+            # ถ้าหาไม่เจอ ให้โชว์ข้อมูล 3 แถวแรกของแท็บแรกมาให้พี่ดูเลยว่ามันพังตรงไหน
+            st.info("💡 ตรวจสอบข้อมูลดิบในระบบ (3 แถวแรก):")
+            first_table = list(client.list_tables(f"{PROJECT_ID}.{DATASET_ID}"))[0].table_id
+            debug_df = client.query(f"SELECT * FROM `{PROJECT_ID}.{DATASET_ID}.{first_table}` LIMIT 3").to_dataframe()
+            st.write(f"ตาราง: {first_table}")
+            st.dataframe(debug_df)
 
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาด: {e}")
-else:
-    st.info("💡 กรุณากรอก ID เพื่อเริ่มการค้นหา")
