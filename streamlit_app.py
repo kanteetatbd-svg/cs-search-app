@@ -6,11 +6,10 @@ import datetime
 
 st.set_page_config(page_title="CS Smart Search & Edit", page_icon="🔍", layout="wide")
 
-# --- 🎯 1. ระบบจัดการผู้ใช้ (ล็อกอินแบบเสถียร ไม่ต้องใช้ Google Cloud) ---
+# --- 🎯 1. ระบบจัดการผู้ใช้ (เหมือนเดิม) ---
 USER_DB = {
-    "get": "5566",
-    "admin": "1234",
-    "staff_cs": "9999"
+    "get": {"password": "5566", "profile_pic": "https://i.imgur.com/G34g25K.png"},
+    "admin": {"password": "1234", "profile_pic": "https://i.imgur.com/O6S3Jd4.png"}
 }
 
 def login():
@@ -22,9 +21,10 @@ def login():
             user = st.text_input("Username")
             pw = st.text_input("Password", type="password")
             if st.form_submit_button("เข้าสู่ระบบ"):
-                if user in USER_DB and USER_DB[user] == pw:
+                if user in USER_DB and USER_DB[user]["password"] == pw:
                     st.session_state.logged_in = True
                     st.session_state.username = user
+                    st.session_state.profile_pic = USER_DB[user]["profile_pic"]
                     st.rerun()
                 else:
                     st.error("❌ ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง")
@@ -46,7 +46,6 @@ def load_all_data():
         data = ws.get_all_values()
         if not data: continue
         df = pd.DataFrame(data)
-        # Smart Header
         header_idx = 0
         for i in range(min(15, len(df))):
             if sum(1 for x in df.iloc[i] if str(x).strip() != "") > 5:
@@ -60,14 +59,13 @@ def load_all_data():
 # --- 3. เริ่มทำงานเมื่อล็อกอินผ่านแล้ว ---
 if login():
     with st.sidebar:
+        st.image(st.session_state.profile_pic, width=80)
         st.success(f"👤 ผู้ใช้: **{st.session_state.username}**")
         if st.button("🚪 ออกจากระบบ"):
             st.session_state.logged_in = False
             st.rerun()
 
     st.title("🔍 CS Case Search & Editor")
-    
-    # 🎯 ขั้นตอนที่ 1: ค้นหาก่อน
     search_val = st.text_input("🔍 ค้นหา ID หรือ IMEI เพื่อดึงข้อมูลมาแก้ไข:")
 
     if search_val:
@@ -83,16 +81,31 @@ if login():
                 found_any = True
                 st.markdown(f"### 📂 เจอข้อมูลในแท็บ: **{title}**")
                 
-                # 🎯 ขั้นตอนที่ 2: ดึงมาเป็นหน้าต่างแก้ไขเหมือน Google Sheets เฉพาะแถวที่เจอ
+                # 🎯 ส่วนที่เพิ่ม: ตั้งค่า Dropdown ให้กับคอลัมน์ที่ต้องการ
+                # พี่สามารถเพิ่มชื่อคอลัมน์ที่ต้องการให้เป็น Dropdown ได้ที่นี่ครับ
+                editor_config = {
+                    "sheet_row": None, # ซ่อนเลขแถวเหมือนเดิม
+                    "การแบน": st.column_config.SelectboxColumn(
+                        "การแบน",
+                        help="เลือกสถานะการแบน",
+                        options=["ปลด", "แบน", "รอตรวจสอบ"], # ใส่ตัวเลือกตามใน Google Sheets เลยครับ
+                        required=True,
+                    ),
+                    "สถานะ": st.column_config.SelectboxColumn(
+                        "สถานะ",
+                        options=["ปกติ", "ไม่ปกติ", "รอดำเนินการ"],
+                        required=True,
+                    )
+                }
+
                 edited_df = st.data_editor(
                     res_df,
                     use_container_width=True,
                     hide_index=True,
-                    column_config={"sheet_row": None}, # ซ่อนเลขแถวไว้เบื้องหลัง
+                    column_config=editor_config, # ใช้การตั้งค่าที่เรากำหนดไว้ด้านบน
                     key=f"editor_{title}_{search_val}"
                 )
 
-                # 🎯 ขั้นตอนที่ 3: ปุ่มบันทึก (เร็วขึ้น ไม่ต้องรีโหลดใหม่ทั้งหมด)
                 if st.button(f"💾 บันทึกการแก้ไขใน {title}", key=f"btn_{title}"):
                     with st.spinner('กำลังบันทึก...'):
                         try:
@@ -105,12 +118,10 @@ if login():
                                 ws.update(f"A{actual_row}", [updated_values])
                             
                             st.toast(f"✅ บันทึกแท็บ {title} เรียบร้อย!", icon="💾")
-                            st.cache_data.clear() # ล้างความจำเพื่อให้เห็นค่าใหม่
+                            st.cache_data.clear()
                         except Exception as e:
                             st.error(f"❌ บันทึกไม่สำเร็จ: {e}")
                 st.divider()
 
         if not found_any:
             st.warning(f"ไม่พบข้อมูลสำหรับ `{search_val}`")
-    else:
-        st.info("💡 พิมพ์เลข ID เพื่อดึงตารางออกมาแก้ไขครับ")
