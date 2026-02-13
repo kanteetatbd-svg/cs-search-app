@@ -17,7 +17,7 @@ def get_bq_client():
         return None
 
 client = get_bq_client()
-search_id = st.text_input("🔍 กรอก ID พนักงาน (พิมพ์แค่เลขก็ได้ครับ):")
+search_id = st.text_input("🔍 กรอกข้อมูล):")
 
 if client and search_id:
     PROJECT_ID = "sturdy-sentry-487204-s4"
