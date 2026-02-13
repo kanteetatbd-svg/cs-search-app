@@ -5,3 +5,4 @@ google-auth
 pandas-gbq
 gspread
 google-auth-oauthlib
+streamlit-google-auth
