@@ -1,65 +1,60 @@
 import streamlit as st
 import pandas as pd
-from google.cloud import bigquery
-from google.oauth2 import service_account
+import gspread
+from google.oauth2.service_account import Credentials
 
-st.set_page_config(page_title="CS Turbo Search", layout="wide")
-st.title("🚀 ระบบค้นหาเคส CS")
+st.set_page_config(page_title="CS Case Finder FINAL", layout="wide")
+st.title("🚀 ระบบดึงข้อมูลเคสพนักงาน (SEARCH EVERYTHING)")
 
+# --- 1. เชื่อมต่อ Google Sheets โดยตรง (ข้าม BigQuery ที่มีปัญหา) ---
 @st.cache_resource
-def get_bq_client():
+def get_sheets_client():
     try:
-        scopes = ["https://www.googleapis.com/auth/cloud-platform", "https://www.googleapis.com/auth/drive"]
-        creds = service_account.Credentials.from_service_account_file('key.json', scopes=scopes)
-        return bigquery.Client(credentials=creds, project=creds.project_id)
+        scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
+        # ใช้ไฟล์ key.json ที่พี่อัปโหลดไว้แล้วใน GitHub
+        creds = Credentials.from_service_account_file('key.json', scopes=scopes)
+        return gspread.authorize(creds)
     except Exception as e:
         st.error(f"❌ กุญแจมีปัญหา: {e}")
         return None
 
-client = get_bq_client()
-search_val = st.text_input("🔍 กรอก ID หรือ IMEI เพื่อค้นหาทันที:")
+gc = get_sheets_client()
+search_val = st.text_input("🔍 กรอก ID หรือ IMEI เพื่อดึงข้อมูล (ค้นหาทุกซอกทุกมุม):")
 
-if client and search_val:
-    PROJECT_ID = "sturdy-sentry-487204-s4"
-    DATASET_ID = "cs_database"
-    q = search_val.strip()
-    
+if gc and search_val:
+    q = search_val.strip().lower()
     try:
-        # 1. ดึงรายชื่อตาราง (แท็บ) ทั้งหมด
-        tables = list(client.list_tables(f"{PROJECT_ID}.{DATASET_ID}"))
-        found_data = {}
+        # เปิดไฟล์ด้วยชื่อ (ตรวจสอบชื่อไฟล์ให้ตรงกับในรูป image_981395.jpg)
+        sh = gc.open('Copy of ไฟล์เก็บเคส2025V1') 
+        worksheets = sh.worksheets()
+        found_results = {}
 
-        with st.spinner('🚀 กำลังค้นหาข้อมูล...'):
-            for table in tables:
-                table_full_id = f"{PROJECT_ID}.{DATASET_ID}.{table.table_id}"
+        with st.spinner('🚀 กำลังกวาดข้อมูลจากทุกแท็บ...'):
+            for ws in worksheets:
+                # ดึงข้อมูลดิบมาทั้งหมด (รวมแถวว่างและ Dashboard)
+                data = ws.get_all_values()
+                if not data: continue
                 
-                # --- จุดตายที่ทำให้เร็วขึ้น: ใช้ SQL ค้นหาตั้งแต่ต้นทาง ---
-                # เราจะไปถาม Schema ของตารางก่อนว่ามีคอลัมน์อะไรบ้าง
-                schema = client.get_table(table_full_id).schema
-                columns = [field.name for field in schema]
+                df = pd.DataFrame(data)
                 
-                # สร้างคำสั่ง SQL ที่สั่งให้ BigQuery หาจากทุกคอลัมน์เอง
-                # ใช้ LIKE เพื่อให้เจอแม้มีช่องว่างแฝง
-                where_clause = " OR ".join([f"CAST({col} AS STRING) LIKE '%{q}%'" for col in columns])
-                sql = f"SELECT * FROM `{table_full_id}` WHERE {where_clause}"
+                # --- ไม้ตาย: ค้นหา ID/IMEI ในทุกบรรทัดและทุกคอลัมน์ ---
+                # แปลงทุกช่องเป็นตัวหนังสือ -> หาคำที่ต้องการ
+                mask = df.astype(str).apply(lambda row: row.str.lower().str.contains(q, na=False).any(), axis=1)
+                res = df[mask]
                 
-                # ส่งคำสั่งไปรันที่ BigQuery (เร็วมาก!)
-                query_job = client.query(sql)
-                result_df = query_job.to_dataframe()
-                
-                if not result_df.empty:
-                    found_data[table.table_id] = result_df
+                if not res.empty:
+                    found_results[ws.title] = res
 
-        # --- แสดงผลแยกตามแท็บ เหมือนเดิม ---
-        if found_data:
-            st.success(f"✅ ค้นหาเสร็จสิ้น! พบข้อมูลใน {len(found_data)} แท็บ")
-            tabs = st.tabs(list(found_data.keys()))
-            for i, (name, df) in enumerate(found_data.items()):
+        if found_results:
+            st.success(f"✅ เจอข้อมูล `{search_val}` ใน {len(found_results)} แท็บ")
+            tabs = st.tabs(list(found_results.keys()))
+            for i, (name, res_df) in enumerate(found_results.items()):
                 with tabs[i]:
-                    st.subheader(f"📂 ข้อมูลจากแท็บ: {name}")
-                    st.dataframe(df, use_container_width=True)
+                    st.subheader(f"📂 แท็บ: {name}")
+                    # แสดงผลเป็นตารางหน้าตาเหมือนใน Google Sheet เป๊ะๆ
+                    st.dataframe(res_df, use_container_width=True, hide_index=True)
         else:
-            st.warning(f"❌ ไม่พบข้อมูล `{q}` ในแท็บไหนเลยครับ")
+            st.error(f"❌ ไม่พบข้อมูล `{search_val}` ในแท็บไหนเลยครับ")
             
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาด: {e}")
