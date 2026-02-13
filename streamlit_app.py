@@ -4,10 +4,18 @@ import gspread
 from google.oauth2.service_account import Credentials
 import datetime
 
-# --- 1. การตั้งค่าหน้าตา ---
+# --- 1. การตั้งค่าหน้าตา (UI) ---
 st.set_page_config(page_title="CS Case Intelligence", page_icon="📝", layout="wide")
 
-# --- 🎯 ระบบจัดการผู้ใช้ (พี่มาเพิ่มรายชื่อตรงนี้ได้เลยครับ) ---
+# เพิ่ม CSS ให้ตารางอ่านง่ายขึ้น
+st.markdown("""
+    <style>
+    .stDataFrame { border: 1px solid #e6e9ef; border-radius: 10px; }
+    .st-emotion-cache-1kyxreq { justify-content: center; }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- 🎯 ระบบจัดการผู้ใช้ ---
 USER_DB = {
     "admin": "1234",
     "get": "5566",
@@ -43,7 +51,7 @@ def login():
         return False
     return True
 
-# --- 3. เชื่อมต่อ Google Sheets (คงความเร็วเดิม) ---
+# --- 3. เชื่อมต่อ Google Sheets ---
 @st.cache_resource
 def get_sheets_client():
     try:
@@ -83,17 +91,19 @@ def load_data_for_edit():
 
 # --- 4. เริ่มการทำงาน ---
 if login():
-    # แสดงชื่อผู้ใช้ที่มุมขวาบน
-    st.sidebar.markdown(f"👤 **ผู้ใช้งาน:** `{st.session_state.username}`")
-    st.sidebar.markdown(f"⏰ **เข้าระบบเมื่อ:** `{st.session_state.login_time}`")
-    
-    if st.sidebar.button("🚪 ออกจากระบบ"):
-        st.session_state.logged_in = False
-        st.rerun()
+    # Sidebar แสดงข้อมูลผู้ใช้
+    with st.sidebar:
+        st.subheader("👤 ข้อมูลผู้ใช้")
+        st.success(f"ชื่อ: **{st.session_state.username}**")
+        st.info(f"ล็อกอินเมื่อ: {st.session_state.login_time}")
+        if st.button("🚪 ออกจากระบบ", use_container_width=True):
+            st.session_state.logged_in = False
+            st.rerun()
+        st.divider()
+        st.caption("ระบบ CS Intelligence v2.0")
 
     st.title("📝 CS Case Intelligence & Editor")
     
-    # ส่วนเนื้อหาหลัก (ก๊อปจากเวอร์ชันที่พี่โอเคมาวาง)
     master_data = load_data_for_edit()
     search_val = st.text_input("🔍 ค้นหา ID หรือ IMEI:", placeholder="พิมพ์ข้อมูลที่ต้องการค้นหา...")
 
@@ -107,6 +117,7 @@ if login():
             if not res.empty:
                 found = True
                 st.markdown(f"### 📂 แท็บ: **{title}**")
+                # แสดงตารางแบบซ่อนคอลัมน์ระบบ
                 st.dataframe(res.drop(columns=['sheet_row']), use_container_width=True, hide_index=True)
                 
                 with st.expander(f"🛠️ แก้ไขข้อมูลโดยคุณ {st.session_state.username}", expanded=True):
@@ -115,25 +126,4 @@ if login():
                     target_col = col1.selectbox(f"เลือกหัวข้อ ({title})", selectable_cols, key=f"sel_{title}")
                     
                     if target_col in DROPDOWN_CONFIG:
-                        new_val = col2.selectbox(f"เลือกค่าใหม่:", DROPDOWN_CONFIG[target_col], key=f"val_{title}")
-                    else:
-                        new_val = col2.text_input(f"พิมพ์ค่าใหม่:", key=f"inp_{title}")
-                    
-                    if col3.button(f"💾 บันทึก ({title})", key=f"btn_{title}"):
-                        row_in_sheet = int(res.iloc[0]['sheet_row'])
-                        with st.spinner('กำลังบันทึก...'):
-                            try:
-                                gc = get_sheets_client()
-                                sh = gc.open('Copy of ไฟล์เก็บเคส2025V1')
-                                ws = sh.worksheet(title)
-                                current_headers = ws.row_values(1) 
-                                if target_col in current_headers:
-                                    c_idx = current_headers.index(target_col) + 1
-                                    ws.update_cell(row_in_sheet, c_idx, new_val)
-                                    # 🎯 เพิ่ม Log ในระบบ (ถ้าพี่มีแท็บ Log ใน Sheets จะดีมาก)
-                                    st.success(f"✅ คุณ {st.session_state.username} แก้ไขข้อมูลเรียบร้อย!")
-                                    st.cache_data.clear()
-                                else:
-                                    st.error("หาคอลัมน์ไม่เจอ")
-                            except Exception as e:
-                                st.error(f"❌ Error: {e}")
+                        new_val = col2.selectbox(f"เลือกค่าใหม่:", DROPDOWN_CONFIG[target_col], key=f"val_{title
