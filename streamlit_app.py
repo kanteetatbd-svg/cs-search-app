@@ -20,28 +20,38 @@ def load_data():
             data = ws.get_all_values()
             if not data: continue
             df = pd.DataFrame(data)
-            # หาหัวตาราง
+            
+            # ค้นหาหัวตาราง
             header_idx = 0
             for i in range(min(15, len(df))):
                 if sum(1 for x in df.iloc[i] if str(x).strip() != "") > 5:
                     header_idx = i; break
-            headers = df.iloc[header_idx].tolist()
+            
+            headers = df.iloc[header_idx].astype(str).tolist()
+            
+            # 🎯 จุดแก้: จัดการชื่อคอลัมน์ที่ซ้ำหรือว่าง (Prevent Duplicate/Empty Column Names)
+            final_headers = []
+            for i, h in enumerate(headers):
+                clean_h = h.strip()
+                if not clean_h or clean_h in final_headers:
+                    final_headers.append(f"Column_{i+1}")
+                else:
+                    final_headers.append(clean_h)
+            
             df = df.iloc[header_idx+1:].reset_index(drop=True)
-            df.columns = headers
+            df.columns = final_headers
             all_tabs[ws.title] = df
         st.session_state.raw_data = all_tabs
     return st.session_state.raw_data
 
-# --- 2. ฟังก์ชันบันทึกการเปลี่ยนแปลง ---
+# --- 2. ฟังก์ชันบันทึก ---
 def save_changes(tab_name, edited_df):
     try:
         gc = get_sheets_client()
         sh = gc.open('Copy of ไฟล์เก็บเคส2025V1')
         ws = sh.worksheet(tab_name)
-        
-        # กองข้อมูลทั้งหมดเตรียมเขียนทับ (วิธีนี้ชัวร์และง่ายสุดถ้าตารางไม่ใหญ่ยักษ์)
-        # เราจะเขียนเริ่มจากแถวที่ 2 (ต่อจากหัวตาราง)
-        data_to_update = edited_df.values.tolist()
+        # เขียนทับข้อมูลทั้งหมดเริ่มจากแถว 2 (ใต้ Header)
+        data_to_update = edited_df.astype(str).values.tolist()
         ws.update('A2', data_to_update)
         st.toast(f"✅ บันทึกแท็บ {tab_name} เรียบร้อย!", icon="💾")
     except Exception as e:
@@ -49,27 +59,30 @@ def save_changes(tab_name, edited_df):
 
 # --- 3. หน้าจอหลัก ---
 st.title("📊 CS Case Real-time Editor")
-st.caption("พิมพ์แก้ไขในตารางได้เลยเหมือน Google Sheets แล้วกด Save ด้านล่าง")
+st.caption("คลิกพิมพ์แก้ไขในตารางได้เลยเหมือน Google Sheets")
 
-all_data = load_data()
+try:
+    all_data = load_data()
+    tabs = st.tabs(list(all_data.keys()))
 
-# สร้าง Tabs ตามชื่อใน Google Sheets
-tabs = st.tabs(list(all_data.keys()))
-
-for i, (tab_name, df) in enumerate(all_data.items()):
-    with tabs[i]:
-        st.subheader(f"ไฟล์: {tab_name}")
-        
-        # 🎯 ไม้ตาย: st.data_editor ทำให้ตารางพิมพ์แก้ได้เหมือน Excel
-        edited_df = st.data_editor(
-            df, 
-            use_container_width=True, 
-            num_rows="dynamic", # เพิ่ม/ลบ แถวได้ด้วย
-            key=f"editor_{tab_name}"
-        )
-        
-        # ปุ่มบันทึกแยกตามแท็บ
-        if st.button(f"💾 บันทึกการแก้ไขใน {tab_name}", key=f"btn_{tab_name}"):
-            with st.spinner('กำลังซิงค์ข้อมูลกับ Google Sheets...'):
-                save_changes(tab_name, edited_df)
-                st.session_state.raw_data[tab_name] = edited_df # อัปเดตข้อมูลในแอปด้วย
+    for i, (tab_name, df) in enumerate(all_data.items()):
+        with tabs[i]:
+            st.subheader(f"ไฟล์: {tab_name}")
+            
+            # แสดง Editor แบบพิมพ์แก้ไขได้
+            edited_df = st.data_editor(
+                df, 
+                use_container_width=True, 
+                num_rows="dynamic",
+                key=f"editor_{tab_name}"
+            )
+            
+            if st.button(f"💾 บันทึก {tab_name}", key=f"btn_{tab_name}"):
+                with st.spinner('กำลังบันทึก...'):
+                    save_changes(tab_name, edited_df)
+                    st.session_state.raw_data[tab_name] = edited_df
+except Exception as e:
+    st.error(f"ระบบขัดข้อง: {e}")
+    if st.button("🔄 ลองรีโหลดข้อมูลใหม่"):
+        if 'raw_data' in st.session_state: del st.session_state.raw_data
+        st.rerun()
