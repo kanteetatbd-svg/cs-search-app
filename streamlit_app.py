@@ -6,7 +6,7 @@ import datetime
 
 st.set_page_config(page_title="CS Smart Search & Edit", page_icon="🔍", layout="wide")
 
-# --- 🎯 1. ระบบจัดการผู้ใช้ (เหมือนเดิม) ---
+# --- 🎯 1. ระบบจัดการผู้ใช้ (เพิ่มรูปโปรไฟล์) ---
 USER_DB = {
     "get": {"password": "5566", "profile_pic": "https://i.imgur.com/G34g25K.png"},
     "admin": {"password": "1234", "profile_pic": "https://i.imgur.com/O6S3Jd4.png"}
@@ -15,6 +15,7 @@ USER_DB = {
 def login():
     if "logged_in" not in st.session_state:
         st.session_state.logged_in = False
+    
     if not st.session_state.logged_in:
         st.title("🔐 ระบบจัดการเคสพนักงาน (Login)")
         with st.form("login_form"):
@@ -59,14 +60,17 @@ def load_all_data():
 # --- 3. เริ่มทำงานเมื่อล็อกอินผ่านแล้ว ---
 if login():
     with st.sidebar:
-        st.image(st.session_state.profile_pic, width=80)
+        # ✅ แก้ไขจุดที่พัง: เช็คก่อนว่ามีรูปไหมค่อยแสดง
+        if "profile_pic" in st.session_state:
+            st.image(st.session_state.profile_pic, width=80)
+        
         st.success(f"👤 ผู้ใช้: **{st.session_state.username}**")
         if st.button("🚪 ออกจากระบบ"):
             st.session_state.logged_in = False
             st.rerun()
 
     st.title("🔍 CS Case Search & Editor")
-    search_val = st.text_input("🔍 ค้นหา ID หรือ IMEI เพื่อดึงข้อมูลมาแก้ไข:")
+    search_val = st.text_input("🔍 ค้นหา ID หรือ IMEI เพื่อแก้ไข:")
 
     if search_val:
         master_data = load_all_data()
@@ -81,14 +85,12 @@ if login():
                 found_any = True
                 st.markdown(f"### 📂 เจอข้อมูลในแท็บ: **{title}**")
                 
-                # 🎯 ส่วนที่เพิ่ม: ตั้งค่า Dropdown ให้กับคอลัมน์ที่ต้องการ
-                # พี่สามารถเพิ่มชื่อคอลัมน์ที่ต้องการให้เป็น Dropdown ได้ที่นี่ครับ
+                # 🎯 ส่วนที่พี่เก็ตขอ: ตั้งค่า Dropdown ให้เหมือน Google Sheets (รูปที่ 2)
                 editor_config = {
-                    "sheet_row": None, # ซ่อนเลขแถวเหมือนเดิม
+                    "sheet_row": None, 
                     "การแบน": st.column_config.SelectboxColumn(
                         "การแบน",
-                        help="เลือกสถานะการแบน",
-                        options=["ปลด", "แบน", "รอตรวจสอบ"], # ใส่ตัวเลือกตามใน Google Sheets เลยครับ
+                        options=["ปลด", "แบน", "รอตรวจสอบ"], # ตัวเลือกตามรูป b193e1.jpg
                         required=True,
                     ),
                     "สถานะ": st.column_config.SelectboxColumn(
@@ -102,7 +104,7 @@ if login():
                     res_df,
                     use_container_width=True,
                     hide_index=True,
-                    column_config=editor_config, # ใช้การตั้งค่าที่เรากำหนดไว้ด้านบน
+                    column_config=editor_config,
                     key=f"editor_{title}_{search_val}"
                 )
 
@@ -117,11 +119,11 @@ if login():
                                 updated_values = row.drop('sheet_row').astype(str).tolist()
                                 ws.update(f"A{actual_row}", [updated_values])
                             
-                            st.toast(f"✅ บันทึกแท็บ {title} เรียบร้อย!", icon="💾")
+                            st.toast(f"✅ บันทึกสำเร็จ!", icon="💾")
                             st.cache_data.clear()
                         except Exception as e:
                             st.error(f"❌ บันทึกไม่สำเร็จ: {e}")
                 st.divider()
 
-        if not found_any:
-            st.warning(f"ไม่พบข้อมูลสำหรับ `{search_val}`")
+    else:
+        st.info("💡 พิมพ์เลข ID เพื่อเริ่มทำงานครับ")
