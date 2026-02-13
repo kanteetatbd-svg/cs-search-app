@@ -4,7 +4,7 @@ import gspread
 from google.oauth2.service_account import Credentials
 
 st.set_page_config(page_title="CS Case Finder FINAL", layout="wide")
-st.title("🚀 ระบบดึงข้อมูลเคสพนักงาน (SEARCH EVERYTHING)")
+st.title("🚀 ระบบดึงข้อมูลเคสCS")
 
 # --- 1. เชื่อมต่อ Google Sheets โดยตรง (ข้าม BigQuery ที่มีปัญหา) ---
 @st.cache_resource
@@ -19,7 +19,7 @@ def get_sheets_client():
         return None
 
 gc = get_sheets_client()
-search_val = st.text_input("🔍 กรอก ID หรือ IMEI เพื่อดึงข้อมูล (ค้นหาทุกซอกทุกมุม):")
+search_val = st.text_input("🔍 กรอก ID หรือ IMEI เพื่อค้นหา")
 
 if gc and search_val:
     q = search_val.strip().lower()
@@ -54,7 +54,7 @@ if gc and search_val:
                     # แสดงผลเป็นตารางหน้าตาเหมือนใน Google Sheet เป๊ะๆ
                     st.dataframe(res_df, use_container_width=True, hide_index=True)
         else:
-            st.error(f"❌ ไม่พบข้อมูล `{search_val}` ในแท็บไหนเลยครับ")
+            st.error(f"❌ ไม่พบข้อมูล `{search_val}`")
             
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาด: {e}")
