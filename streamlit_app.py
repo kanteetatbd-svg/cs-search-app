@@ -3,14 +3,14 @@ import pandas as pd
 from google.cloud import bigquery
 from google.oauth2 import service_account
 
-st.set_page_config(page_title="CS Multi-Table Search", layout="wide")
-st.title("🚀 ระบบค้นหาข้อมูลพนักงาน (BigQuery Multi-Table)")
+# ตั้งค่าหน้าจอให้กว้างเพื่อดูตารางง่ายๆ
+st.set_page_config(page_title="CS Case Tracker", layout="wide")
+st.title("🚀 ระบบค้นหาเคสพนักงาน (แยกตามแท็บ)")
 
-# --- 1. เชื่อมต่อผ่านกุญแจไฟล์ key.json ---
+# --- 1. เชื่อมต่อกุญแจไฟล์ key.json ---
 @st.cache_resource
 def get_bq_client():
     try:
-        # กำหนด Scopes ให้ครอบคลุมการอ่านไฟล์ภายนอก (Google Sheets)
         scopes = [
             "https://www.googleapis.com/auth/cloud-platform",
             "https://www.googleapis.com/auth/drive",
@@ -19,60 +19,58 @@ def get_bq_client():
         creds = service_account.Credentials.from_service_account_file('key.json', scopes=scopes)
         return bigquery.Client(credentials=creds, project=creds.project_id)
     except Exception as e:
-        st.error(f"❌ ระบบหาไฟล์กุญแจไม่เจอหรือไฟล์พัง: {e}")
+        st.error(f"❌ ระบบหากุญแจไม่เจอ: {e}")
         return None
 
 client = get_bq_client()
 
 # --- 2. ส่วนการค้นหา ---
-search_id = st.text_input("🔍 กรอก ID พนักงานที่ต้องการค้นหา:", placeholder="เช่น 9300191")
+search_id = st.text_input("🔍 กรอก ID พนักงานที่ต้องการติดตามเคส:", placeholder="เช่น 9300191")
 
 if client and search_id:
-    # ระบุพิกัด Dataset ของพี่
     PROJECT_ID = "sturdy-sentry-487204-s4"
     DATASET_ID = "cs_database"
     
     try:
-        # ดึงรายชื่อตาราง (Table) ทั้งหมดใน Dataset นี้ออกมา (เหมือนรายชื่อแท็บใน Sheets)
+        # ดึงรายชื่อตารางทั้งหมด (ซึ่งก็คือชื่อแท็บใน Sheets ของพี่)
         tables = client.list_tables(f"{PROJECT_ID}.{DATASET_ID}")
         
-        found_data = {} # เก็บผลลัพธ์: { 'ชื่อตาราง': DataFrame }
+        found_results = {} # เก็บข้อมูล { 'ชื่อแท็บ': DataFrame }
 
-        with st.spinner('🚀 กำลังกวาดข้อมูลจากทุกตาราง...'):
+        with st.spinner('กำลังค้นหาข้อมูลจากทุกแท็บ...'):
             for table in tables:
                 table_full_id = f"{PROJECT_ID}.{DATASET_ID}.{table.table_id}"
                 
-                # ดึงหัวตารางมาเช็กว่าตารางนี้มีคอลัมน์อะไรบ้าง
-                schema_df = client.query(f"SELECT * FROM `{table_full_id}` LIMIT 1").to_dataframe()
-                all_columns = schema_df.columns.tolist()
+                # เช็กหัวตารางเพื่อหาชื่อคอลัมน์ทั้งหมด
+                sample = client.query(f"SELECT * FROM `{table_full_id}` LIMIT 1").to_dataframe()
+                cols = sample.columns.tolist()
                 
-                # สร้างคำสั่ง SQL ค้นหา ID จาก "ทุกคอลัมน์" ในตารางนี้ (กันเหนียว)
-                where_clauses = [f"CAST({col} AS STRING) = '{search_id.strip()}'" for col in all_columns]
-                sql = f"SELECT * FROM `{table_full_id}` WHERE {' OR '.join(where_clauses)}"
+                # สร้าง SQL ค้นหา ID จากทุกคอลัมน์ในแท็บนี้ (เผื่อพี่วาง ID ไว้ไม่ตรงกัน)
+                where_clause = " OR ".join([f"CAST({c} AS STRING) = '{search_id.strip()}'" for c in cols])
+                sql = f"SELECT * FROM `{table_full_id}` WHERE {where_clause}"
                 
-                try:
-                    result_df = client.query(sql).to_dataframe()
-                    if not result_df.empty:
-                        found_data[table.table_id] = result_df
-                except:
-                    continue # ข้ามตารางที่อาจจะมีปัญหาเรื่องโครงสร้างข้อมูล
+                df_result = client.query(sql).to_dataframe()
+                
+                # ถ้าเจอข้อมูลในแท็บนี้ ให้เก็บไว้โชว์
+                if not df_result.empty:
+                    found_results[table.table_id] = df_result
 
-        # --- 3. แสดงผลลัพธ์แบบ "แท็บ" เหมือน Google Sheets ---
-        if found_data:
-            st.success(f"✅ พบข้อมูลของ ID `{search_id}` ใน {len(found_data)} ตาราง")
+        # --- 3. การแสดงผลแบบแยกหัวข้อตามแท็บ ---
+        if found_results:
+            st.success(f"✅ พบข้อมูลของ ID `{search_id}` ใน {len(found_results)} หัวข้อ (แท็บ)")
             
-            # สร้าง Tabs ตามชื่อตารางที่เจอข้อมูล
-            tab_list = st.tabs(list(found_data.keys()))
+            # สร้างแถบ Tabs ด้านบนตามชื่อแท็บที่เจอข้อมูล
+            tab_objects = st.tabs(list(found_results.keys()))
             
-            for i, (table_name, df) in enumerate(found_data.items()):
-                with tab_list[i]:
-                    st.write(f"📊 ข้อมูลจากตาราง: **{table_name}**")
-                    # แสดงผลเป็นตารางเหมือน Google Sheets เป๊ะๆ
+            for i, (tab_name, df) in enumerate(found_results.items()):
+                with tab_objects[i]:
+                    st.subheader(f"📂 ข้อมูลจากแท็บ: {tab_name}")
+                    # โชว์ข้อมูลเป็นตารางเหมือนใน Sheets
                     st.dataframe(df, use_container_width=True)
         else:
-            st.warning(f"❌ ไม่พบข้อมูล ID `{search_id}` ในตารางใดๆ เลย")
+            st.warning(f"❌ ไม่พบข้อมูล ID `{search_id}` ในแท็บไหนเลยครับ")
 
     except Exception as e:
-        st.error(f"เกิดข้อผิดพลาดในการเข้าถึง BigQuery: {e}")
+        st.error(f"เกิดข้อผิดพลาด: {e}")
 else:
-    st.info("💡 ใส่ ID พนักงานเพื่อเริ่มค้นหาข้อมูลจากทุกตารางในระบบ")
+    st.info("💡 กรุณากรอก ID เพื่อเริ่มการค้นหา")
