@@ -1,58 +1,49 @@
 import streamlit as st
-import pandas as pd
 from google.cloud import bigquery
 from google.oauth2 import service_account
 
-st.set_page_config(page_title="BigQuery Turbo Search", layout="wide")
-st.title("🚀 ระบบค้นหา BigQuery ความเร็วสูง")
+# --- 1. ตั้งค่าพื้นฐาน ---
+st.set_page_config(page_title="CS Search Reset", layout="wide")
+st.title("🚀 ระบบค้นหาข้อมูล (เวอร์ชัน Reset)")
 
-# --- 1. จัดการความปลอดภัย (ดึงกุญแจจาก Secrets) ---
+# --- 2. เชื่อมต่อกุญแจโดยตรงจากไฟล์ key.json ---
 @st.cache_resource
-def get_bigquery_client():
+def get_client():
     try:
-        conf = dict(st.secrets["gcp_service_account"])
-        conf["private_key"] = conf["private_key"].replace("\\n", "\n")
-        
-        # ใส่ Scopes ให้ครบเพื่อป้องกัน Error 403
-        scopes = ["https://www.googleapis.com/auth/cloud-platform", "https://www.googleapis.com/auth/drive"]
-        creds = service_account.Credentials.from_service_account_info(conf, scopes=scopes)
-        
+        # สิทธิ์การเข้าถึง BigQuery และ Google Drive (Sheets)
+        scopes = [
+            "https://www.googleapis.com/auth/cloud-platform",
+            "https://www.googleapis.com/auth/drive"
+        ]
+        # อ่านจากไฟล์ที่พี่อัปโหลดขึ้น GitHub เป๊ะๆ
+        creds = service_account.Credentials.from_service_account_file('key.json', scopes=scopes)
         return bigquery.Client(credentials=creds, project=creds.project_id)
     except Exception as e:
-        st.error(f"❌ กุญแจมีปัญหา: {e}")
+        st.error(f"❌ ระบบหาไฟล์ key.json ไม่เจอ หรือไฟล์พัง: {e}")
         return None
 
-client = get_bigquery_client()
+client = get_client()
 
-# --- 2. ส่วนการค้นหา (ทำงานที่ฝั่ง BigQuery เลย) ---
-search_query = st.text_input("🔍 ใส่ ID เพื่อค้นหาทันที:", placeholder="เช่น 14833323")
+# --- 3. ส่วนค้นหาข้อมูล ---
+search_id = st.text_input("🔍 กรอก ID เพื่อค้นหา (เช่น 9300191):")
 
-if client and search_query:
-    st.markdown(f"🔍 กำลังค้นหา: `{search_query}`")
-    
-    # ระบุชื่อโปรเจกต์และตารางของพี่
+if client and search_id:
+    # ระบุชื่อตารางของพี่
     TABLE_ID = "sturdy-sentry-487204-s4.cs_database.case_2025"
     
-    # ใช้ SQL Query (เร็วกว่าโหลดมาทั้งไฟล์เยอะมากครับพี่)
-    # ค้นหาในคอลัมน์ string_field_4 (หรือเปลี่ยนเป็นคอลัมน์ที่พี่ต้องการ)
-    sql = f"""
-        SELECT * FROM `{TABLE_ID}` 
-        WHERE CAST(string_field_4 AS STRING) LIKE '%{search_query}%'
-        LIMIT 100
-    """
+    # ใช้ Query แบบกว้าง ค้นหาใน string_field_4 (คอลัมน์ E ใน Sheets)
+    sql = f"SELECT * FROM `{TABLE_ID}` WHERE CAST(string_field_4 AS STRING) = '{search_id}'"
     
     try:
-        with st.spinner("🚀 BigQuery กำลังประมวลผล..."):
-            df = client.query(sql).to_dataframe()
-        
+        df = client.query(sql).to_dataframe()
         if not df.empty:
-            st.success(f"✅ พบข้อมูล {len(df)} รายการ")
+            st.success(f"✅ พบข้อมูลสำหรับ ID: {search_id}")
             st.dataframe(df, use_container_width=True)
         else:
-            st.warning(f"❌ ไม่พบข้อมูล '{search_query}'")
-            
+            st.warning(f"❌ ไม่พบข้อมูล '{search_id}' ในคอลัมน์ string_field_4")
+            # ถ้าหาไม่เจอ ให้โชว์ 3 แถวแรกมาเช็กชื่อคอลัมน์กันตรงๆ เลยพี่
+            st.info("ตรวจสอบชื่อคอลัมน์จริงจากตารางด้านล่างนี้ครับ:")
+            preview = client.query(f"SELECT * FROM `{TABLE_ID}` LIMIT 3").to_dataframe()
+            st.dataframe(preview)
     except Exception as e:
-        st.error(f"เกิดข้อผิดพลาดในการดึงข้อมูล: {e}")
-
-else:
-    st.info("💡 พิมพ์ ID ด้านบนเพื่อค้นหาข้อมูลจาก BigQuery ได้ทันทีครับ")
+        st.error(f"เกิดข้อผิดพลาด: {e}")
