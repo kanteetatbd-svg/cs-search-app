@@ -1,84 +1,88 @@
-Big Query Code
 import streamlit as st
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 
-st.set_page_config(page_title="CS Case Finder LIGHTNING", layout="wide")
-st.title("ระบบค้นหาเคส CS")
+st.set_page_config(page_title="CS Smart Editor", page_icon="📊", layout="wide")
 
-# --- 1. เชื่อมต่อ Google Sheets ---
+# --- 1. เชื่อมต่อ (คงความเร็วเดิม) ---
 @st.cache_resource
 def get_sheets_client():
+    creds = Credentials.from_service_account_file('key.json', scopes=['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive'])
+    return gspread.authorize(creds)
+
+def load_data():
+    if 'raw_data' not in st.session_state:
+        gc = get_sheets_client()
+        sh = gc.open('Copy of ไฟล์เก็บเคส2025V1')
+        all_tabs = {}
+        for ws in sh.worksheets():
+            data = ws.get_all_values()
+            if not data: continue
+            df = pd.DataFrame(data)
+            
+            # ค้นหาหัวตาราง
+            header_idx = 0
+            for i in range(min(15, len(df))):
+                if sum(1 for x in df.iloc[i] if str(x).strip() != "") > 5:
+                    header_idx = i; break
+            
+            headers = df.iloc[header_idx].astype(str).tolist()
+            
+            # 🎯 จุดแก้: จัดการชื่อคอลัมน์ที่ซ้ำหรือว่าง (Prevent Duplicate/Empty Column Names)
+            final_headers = []
+            for i, h in enumerate(headers):
+                clean_h = h.strip()
+                if not clean_h or clean_h in final_headers:
+                    final_headers.append(f"Column_{i+1}")
+                else:
+                    final_headers.append(clean_h)
+            
+            df = df.iloc[header_idx+1:].reset_index(drop=True)
+            df.columns = final_headers
+            all_tabs[ws.title] = df
+        st.session_state.raw_data = all_tabs
+    return st.session_state.raw_data
+
+# --- 2. ฟังก์ชันบันทึก ---
+def save_changes(tab_name, edited_df):
     try:
-        scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
-        creds = Credentials.from_service_account_file('key.json', scopes=scopes)
-        return gspread.authorize(creds)
+        gc = get_sheets_client()
+        sh = gc.open('Copy of ไฟล์เก็บเคส2025V1')
+        ws = sh.worksheet(tab_name)
+        # เขียนทับข้อมูลทั้งหมดเริ่มจากแถว 2 (ใต้ Header)
+        data_to_update = edited_df.astype(str).values.tolist()
+        ws.update('A2', data_to_update)
+        st.toast(f"✅ บันทึกแท็บ {tab_name} เรียบร้อย!", icon="💾")
     except Exception as e:
-        st.error(f"❌ KeyError: {e}")
-        return None
+        st.error(f"❌ บันทึกไม่สำเร็จ: {e}")
 
-# --- 2. โหลดข้อมูล "ทุกแท็บ" ในคำสั่งเดียว (API Call เดียว) ---
-@st.cache_data(ttl=900) # จำข้อมูลไว้ 15 นาที
-def load_all_data_fast():
-    gc = get_sheets_client()
-    if not gc: return {}
-    
-    sh = gc.open('Copy of ไฟล์เก็บเคส2025V1')
-    worksheets = sh.worksheets()
-    
-    # สร้างรายชื่อแท็บทั้งหมด เพื่อส่งไปขอ Google ทีเดียว
-    ranges = [f"'{ws.title}'" for ws in worksheets]
-    all_data = {}
-    
-    try:
-        # ⚡ ไม้ตายที่ 1: ดึงข้อมูลทุกแท็บพร้อมกันใน 1 คำสั่ง (ข้ามคอขวดเน็ต)
-        batch_result = sh.values_batch_get(ranges)
-        value_ranges = batch_result.get('valueRanges', [])
-        
-        # จับคู่ชื่อแท็บกับข้อมูลที่ได้มา
-        for ws, val_range in zip(worksheets, value_ranges):
-            values = val_range.get('values', [])
-            if values:
-                all_data[ws.title] = pd.DataFrame(values)
-        return all_data
-    except Exception as e:
-        st.error(f"เกิดข้อผิดพลาดในการดึงข้อมูล: {e}")
-        return {}
+# --- 3. หน้าจอหลัก ---
+st.title("📊 CS Case Real-time Editor")
+st.caption("คลิกพิมพ์แก้ไขในตารางได้เลยเหมือน Google Sheets")
 
-# --- 3. ส่วนการทำงานหลัก ---
-# ปุ่มรีเฟรช เผื่อต้องการอัปเดตข้อมูลทันที
-if st.sidebar.button("🔄 อัพเดทข้อมูล"):
-    st.cache_data.clear()
-    st.rerun()
+try:
+    all_data = load_data()
+    tabs = st.tabs(list(all_data.keys()))
 
-# โหลดข้อมูลรอไว้ในแรมเลย (รอโหลดแค่ตอนเปิดแอปครั้งแรก)
-with st.spinner('⚡ กำลังดูดข้อมูลทั้งหมดมาไว้ในเครื่อง (รอแค่ครั้งแรก)...'):
-    master_data = load_all_data_fast()
-
-search_val = st.text_input("🔍 กรอก ID หรือ IMEI แล้วกด Enter")
-
-if search_val:
-    q = search_val.strip().lower()
-    found_results = {}
-
-    for title, df in master_data.items():
-        if df.empty: continue
-        
-        # ⚡ ไม้ตายที่ 2: รวบทุกคอลัมน์เป็นข้อความเดียว แล้วค้นหารวดเดียว (เร็วกว่าเดิม 100 เท่า)
-        combined_text = df.astype(str).agg(' '.join, axis=1).str.lower()
-        mask = combined_text.str.contains(q, na=False)
-        res = df[mask]
-        
-        if not res.empty:
-            found_results[title] = res
-
-    # --- แสดงผลแบบเรียงต่อกัน ---
-    if found_results:
-        st.success(f"✅ เจอข้อมูล `{search_val}` ใน {len(found_results)} แท็บ")
-        for name, res_df in found_results.items():
-            st.markdown(f"### 📂 แท็บ: {name}")
-            st.dataframe(res_df, use_container_width=True, hide_index=True)
-            st.divider()
-    else:
-        st.error(f"❌ ไม่พบข้อมูล `{search_val}`")
+    for i, (tab_name, df) in enumerate(all_data.items()):
+        with tabs[i]:
+            st.subheader(f"ไฟล์: {tab_name}")
+            
+            # แสดง Editor แบบพิมพ์แก้ไขได้
+            edited_df = st.data_editor(
+                df, 
+                use_container_width=True, 
+                num_rows="dynamic",
+                key=f"editor_{tab_name}"
+            )
+            
+            if st.button(f"💾 บันทึก {tab_name}", key=f"btn_{tab_name}"):
+                with st.spinner('กำลังบันทึก...'):
+                    save_changes(tab_name, edited_df)
+                    st.session_state.raw_data[tab_name] = edited_df
+except Exception as e:
+    st.error(f"ระบบขัดข้อง: {e}")
+    if st.button("🔄 ลองรีโหลดข้อมูลใหม่"):
+        if 'raw_data' in st.session_state: del st.session_state.raw_data
+        st.rerun()
