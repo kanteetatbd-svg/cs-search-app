@@ -2,21 +2,49 @@ import streamlit as st
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
+import concurrent.futures # ตัวช่วยโหลดพร้อมกัน
+import time
 
-st.set_page_config(page_title="CS Multi-Tab Search", layout="wide")
-st.title("📂 ระบบรวมข้อมูลรายไอดี (ดึงทุกแท็บ/ทุกสถานะ)")
+st.set_page_config(page_title="CS Turbo Search", layout="wide")
+st.title("🚀 ระบบค้นหาความเร็วสูง (Version 29.0 - Turbo Parallel)")
 
 @st.cache_resource
 def get_config():
     try:
         conf = dict(st.secrets["gcp_service_account"])
-        if "\\n" in conf["private_key"]:
-            conf["private_key"] = conf["private_key"].replace("\\n", "\n")
+        conf["private_key"] = conf["private_key"].replace("\\n", "\n")
         return conf
     except Exception as e:
         return None
 
 config = get_config()
+
+# ฟังก์ชันดึงข้อมูล 1 แท็บ (แบบเดี่ยว)
+def fetch_worksheet(ws):
+    raw = ws.get_all_values()
+    if raw:
+        df = pd.DataFrame(raw)
+        df.columns = df.iloc[0]
+        return ws.title, df[1:].reset_index(drop=True)
+    return ws.title, pd.DataFrame()
+
+# ฟังก์ชันโหลดทุกแท็บพร้อมกัน (Parallel)
+@st.cache_data(ttl=1800)
+def load_all_data_parallel(file_id, _config):
+    scopes = ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
+    creds = Credentials.from_service_account_info(_config, scopes=scopes)
+    client = gspread.authorize(creds)
+    sh = client.open_by_key(file_id)
+    worksheets = sh.worksheets()
+    
+    all_data = {}
+    with st.spinner(f"🚀 กำลังเร่งสปีดดึงข้อมูลจาก {len(worksheets)} แท็บพร้อมกัน..."):
+        # ใช้ ThreadPoolExecutor เพื่อโหลดข้อมูลแบบขนาน
+        with concurrent.futures.ThreadPoolExecutor(max_workers=20) as executor:
+            results = list(executor.map(fetch_worksheet, worksheets))
+            for title, df in results:
+                all_data[title] = df
+    return all_data
 
 if config:
     try:
@@ -25,52 +53,40 @@ if config:
         client = gspread.authorize(creds)
         
         all_files = client.openall()
+        file_map = {f.title: f.id for f in all_files}
         
-        if not all_files:
-            st.error("❌ ไม่พบไฟล์ที่แชร์กับระบบ")
-        else:
-            file_map = {f.title: f.id for f in all_files}
-            selected_file_name = st.selectbox("📊 เลือกไฟล์ฐานข้อมูลที่ต้องการใช้งาน:", list(file_map.keys()))
+        st.sidebar.header("⚙️ เมนูควบคุม")
+        selected_file_name = st.sidebar.selectbox("เลือกไฟล์:", list(file_map.keys()))
+        
+        if st.sidebar.button("🔄 ล้างค่าแล้วโหลดใหม่"):
+            st.cache_data.clear()
+            st.rerun()
+
+        # เริ่มโหลดข้อมูลแบบขนาน
+        data = load_all_data_parallel(file_map[selected_file_name], config)
+
+        search_query = st.text_input("🔍 ใส่ ID เพื่อค้นหาทันที:", placeholder="เช่น 14833323")
+
+        if search_query:
+            st.markdown(f"🔍 ผลการค้นหาสำหรับ: `{search_query}`")
+            found_count = 0
             
-            # รับค่าไอดีจากผู้ใช้
-            search_query = st.text_input("🔍 ใส่ ID ที่ต้องการดึงข้อมูลทั้งหมด:", placeholder="พิมพ์ ID เช่น 14833323 แล้วกด Enter")
+            # ค้นหาในหน่วยความจำ (เร็วมาก)
+            for tab_name, df in data.items():
+                if df.empty: continue
+                # ค้นหาแบบ Vectorized (เร็วกว่าวนลูปธรรมดา)
+                mask = df.astype(str).apply(lambda x: x.str.contains(search_query, case=False, na=False)).any(axis=1)
+                result = df[mask]
 
-            if search_query:
-                sh = client.open_by_key(file_map[selected_file_name])
-                worksheets = sh.worksheets()
-                
-                st.markdown(f"## 📌 ผลการค้นหาสำหรับไอดี: `{search_query}`")
-                found_any = False
-
-                # วนลูปผ่านทุกแท็บเหมือนการเปิดไล่ดูใน Sheets
-                for ws in worksheets:
-                    # ดึงข้อมูลดิบทั้งหมดจากแท็บนั้น
-                    raw_data = ws.get_all_values()
-                    if not raw_data:
-                        continue
-                        
-                    # แปลงเป็นตารางโดยใช้แถวแรกเป็นหัวข้อ (Header) เพื่อความเหมือนต้นฉบับ
-                    df = pd.DataFrame(raw_data)
-                    df.columns = df.iloc[0] # ตั้งชื่อหัวคอลัมน์จากแถวที่ 1
-                    df = df[1:].reset_index(drop=True)
-
-                    # ค้นหาไอดีในทุกคอลัมน์ (เผื่อไอดีไปอยู่ในคอลัมน์ที่ต่างกันในแต่ละแท็บ)
-                    result = df[df.apply(lambda row: row.astype(str).str.contains(search_query, case=False, na=False).any(), axis=1)]
-
-                    if not result.empty:
-                        found_any = True
-                        # แสดงหัวข้อแท็บให้ชัดเจนเหมือนแบ่งหน้าในไฟล์
-                        st.markdown(f"### 📍 ข้อมูลจากแท็บ: **{ws.title}**")
-                        # แสดงผลในรูปแบบตารางที่เลื่อนดูได้และขยายเต็มหน้าจอ
+                if not result.empty:
+                    found_count += 1
+                    with st.expander(f"✅ พบในแท็บ: {tab_name}", expanded=True):
                         st.dataframe(result, use_container_width=True)
-                        st.divider() # เส้นคั่นระหว่างแท็บเพื่อให้ดูง่าย
-                
-                if not found_any:
-                    st.warning(f"⚠️ ไม่พบข้อมูลไอดี '{search_query}' ในแท็บใดเลยของไฟล์นี้")
-                else:
-                    st.success(f"🏁 ดึงข้อมูลที่เกี่ยวข้องทั้งหมดเรียบร้อยแล้ว")
-            else:
-                st.info("💡 กรุณาใส่ ID ด้านบนเพื่อเริ่มการดึงข้อมูลจากทุกแท็บ")
+            
+            if found_count == 0:
+                st.warning(f"❌ ไม่พบข้อมูล '{search_query}'")
+        else:
+            st.info(f"💡 โหลดข้อมูล {len(data)} แท็บเรียบร้อย! พิมพ์ ID ด้านบนเพื่อค้นหาได้เลยครับ")
 
     except Exception as e:
-        st.error(f"เกิดข้อผิดพลาดในการดึงข้อมูล: {e}")
+        st.error(f"เกิดข้อผิดพลาด: {e}")
