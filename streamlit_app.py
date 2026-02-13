@@ -3,8 +3,8 @@ import pandas as pd
 from google.cloud import bigquery
 from google.oauth2 import service_account
 
-st.set_page_config(page_title="CS Mega Search", layout="wide")
-st.title("🚀 ระบบค้นหาข้อมูล CS (ID / IMEI)")
+st.set_page_config(page_title="CS Mega Search Final", layout="wide")
+st.title("🚀 ระบบค้นหาข้อมูล CS (ID / IMEI) - เวอร์ชันเน้นเจอชัวร์")
 
 @st.cache_resource
 def get_bq_client():
@@ -17,51 +17,47 @@ def get_bq_client():
         return None
 
 client = get_bq_client()
-# รับค่าได้ทั้ง ID หรือ IMEI
-search_val = st.text_input("🔍 กรอก ID หรือ IMEI ที่ต้องการค้นหา:", placeholder="เช่น 9300191 หรือเลข IMEI ยาวๆ")
+search_val = st.text_input("🔍 กรอก ID หรือ IMEI ที่ต้องการค้นหา:")
 
 if client and search_val:
     PROJECT_ID = "sturdy-sentry-487204-s4"
     DATASET_ID = "cs_database"
-    query_str = search_val.strip()
+    q = search_val.strip().lower() # ตัดช่องว่างและทำให้เป็นตัวพิมพ์เล็ก
     
     try:
-        # 1. ดึงรายชื่อตาราง (แท็บ) ทั้งหมด
-        tables = client.list_tables(f"{PROJECT_ID}.{DATASET_ID}")
+        tables = list(client.list_tables(f"{PROJECT_ID}.{DATASET_ID}"))
         found_data = {}
 
-        with st.spinner('🚀 กำลังค้นหาในทุกแท็บอย่างละเอียด...'):
+        with st.spinner('🚀 กำลังควานหาในทุกแท็บอย่างละเอียด...'):
             for table in tables:
-                table_full_id = f"{PROJECT_ID}.{DATASET_ID}.{table.table_id}"
+                table_id = f"{PROJECT_ID}.{DATASET_ID}.{table.table_id}"
                 
-                # 2. ดึงข้อมูลทั้งหมดของแท็บนั้นออกมา (แก้ปัญหาเรื่องหัวตารางเลื่อน)
-                df_all = client.query(f"SELECT * FROM `{table_full_id}`").to_dataframe()
+                # ดึงข้อมูลทั้งหมดของแท็บนั้นมา (ไม่จำกัดแถว เพื่อให้เจอข้อมูลที่อยู่ลึกๆ)
+                df = client.query(f"SELECT * FROM `{table_id}`").to_dataframe()
                 
-                if not df_all.empty:
-                    # 3. ค้นหาแบบ "เจอที่ไหนก็ได้ในแถวนั้น" (Case-insensitive)
-                    # ไม่ว่าพี่จะกรอก ID หรือ IMEI มันจะเช็กให้ทุกช่องครับ
-                    mask = df_all.astype(str).apply(lambda x: x.str.contains(query_str, case=False, na=False)).any(axis=1)
-                    result_df = df_all[mask]
+                if not df.empty:
+                    # --- จุดที่แก้: แปลงทุกอย่างเป็น String และหาแบบดื้อๆ เลย ---
+                    # วิธีนี้จะข้ามพวกค่า None หรือ Error ของประเภทข้อมูลไปได้ครับ
+                    mask = df.astype(str).apply(lambda row: row.str.lower().str.contains(q, na=False).any(), axis=1)
+                    res = df[mask]
                     
-                    if not result_df.empty:
-                        found_data[table.table_id] = result_df
+                    if not res.empty:
+                        found_data[table.table_id] = res
 
-        # --- แสดงผลลัพธ์แยกตามแท็บให้เหมือน Original File ---
         if found_data:
-            st.success(f"✅ พบข้อมูลที่เกี่ยวข้องกับ `{query_str}` ใน {len(found_data)} แท็บ")
-            
-            # สร้างแถบ Tabs ด้านบนตามชื่อแท็บที่เจอข้อมูลจริง
-            tab_list = st.tabs(list(found_data.keys()))
-            
-            for i, (tab_name, df) in enumerate(found_data.items()):
-                with tab_list[i]:
-                    st.subheader(f"📂 แท็บ: {tab_name}")
-                    # แสดงข้อมูลหน้าตาเหมือนใน Google Sheet
-                    st.dataframe(df, use_container_width=True)
+            st.success(f"✅ เจอข้อมูลของ `{search_val}` ใน {len(found_data)} แท็บ")
+            tabs = st.tabs(list(found_data.keys()))
+            for i, (name, data) in enumerate(found_data.items()):
+                with tabs[i]:
+                    st.subheader(f"📂 ข้อมูลจากแท็บ: {name}")
+                    st.dataframe(data, use_container_width=True)
         else:
-            st.warning(f"❌ ไม่พบข้อมูล `{query_str}` ในแท็บไหนเลยครับ")
-            
+            st.error(f"❌ ไม่พบข้อมูล `{search_val}` ในแท็บไหนเลยครับ")
+            # โชว์ข้อมูล 20 แถวแรกของแท็บแรก เพื่อดูว่าข้อมูลมันเข้าแอปจริงไหม
+            if tables:
+                st.info(f"💡 ตรวจสอบข้อมูลดิบในแท็บ [{tables[0].table_id}]:")
+                debug_df = client.query(f"SELECT * FROM `{PROJECT_ID}.{DATASET_ID}.{tables[0].table_id}` LIMIT 20").to_dataframe()
+                st.dataframe(debug_df)
+
     except Exception as e:
         st.error(f"เกิดข้อผิดพลาด: {e}")
-else:
-    st.info("💡 กรุณากรอก ID หรือ IMEI เพื่อเริ่มค้นหาข้อมูลจากทุกแท็บ")
