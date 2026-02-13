@@ -2,10 +2,48 @@ import streamlit as st
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
+import datetime
 
-st.set_page_config(page_title="CS Case Intelligence v2", page_icon="📝", layout="wide")
+# --- 1. การตั้งค่าหน้าตา ---
+st.set_page_config(page_title="CS Case Intelligence", page_icon="📝", layout="wide")
 
-# --- 1. เชื่อมต่อ Google Sheets ---
+# --- 🎯 ระบบจัดการผู้ใช้ (พี่มาเพิ่มรายชื่อตรงนี้ได้เลยครับ) ---
+USER_DB = {
+    "admin": "1234",
+    "get": "5566",
+    "staff_01": "7788"
+}
+
+# --- 🎯 จุดตั้งค่า Dropdown ---
+DROPDOWN_CONFIG = {
+    'สถานะ': ['รอตรวจสอบ', 'กำลังดำเนินการ', 'ปิดเคสเรียบร้อย', 'ยกเลิก/ข้อมูลผิด'],
+    'ประเภทเคส': ['ID', 'IMEI', 'เปลี่ยนเครื่อง', 'อื่นๆ']
+}
+
+# --- 2. ฟังก์ชันตรวจสอบการล็อกอิน ---
+def login():
+    if "logged_in" not in st.session_state:
+        st.session_state.logged_in = False
+
+    if not st.session_state.logged_in:
+        st.title("🔐 เข้าสู่ระบบ CS Case Management")
+        with st.form("login_form"):
+            user = st.text_input("ชื่อผู้ใช้งาน (Username)")
+            pw = st.text_input("รหัสผ่าน (Password)", type="password")
+            submit = st.form_submit_button("เข้าสู่ระบบ")
+            
+            if submit:
+                if user in USER_DB and USER_DB[user] == pw:
+                    st.session_state.logged_in = True
+                    st.session_state.username = user
+                    st.session_state.login_time = datetime.datetime.now().strftime("%H:%M:%S")
+                    st.rerun()
+                else:
+                    st.error("❌ ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง")
+        return False
+    return True
+
+# --- 3. เชื่อมต่อ Google Sheets (คงความเร็วเดิม) ---
 @st.cache_resource
 def get_sheets_client():
     try:
@@ -16,97 +54,86 @@ def get_sheets_client():
         st.error(f"❌ ระบบหากุญแจไม่เจอ: {e}")
         return None
 
-# --- 2. โหลดข้อมูล (เพิ่มการเก็บเลขแถวไว้แก้ไข) ---
-@st.cache_data(ttl=60) # ตั้งแคชสั้นลงเพื่อให้เห็นข้อมูลที่แก้เร็วขึ้น
+@st.cache_data(ttl=60)
 def load_data_for_edit():
     gc = get_sheets_client()
     if not gc: return {}
-    sh = gc.open('Copy of ไฟล์เก็บเคส2025V1')
-    worksheets = sh.worksheets()
-    all_data = {}
-    
-    for ws in worksheets:
-        data = ws.get_all_values()
-        if not data: continue
-        df = pd.DataFrame(data)
-        
-        # ค้นหาหัวตารางเหมือนเดิม
-        header_idx = 0
-        max_cols = 0
-        for i in range(min(15, len(df))):
-            count = sum(1 for x in df.iloc[i] if str(x).strip() != "")
-            if count > max_cols:
-                max_cols = count
-                header_idx = i
-        
-        headers = df.iloc[header_idx].tolist()
-        # เก็บเลขแถวจริงใน Sheets ไว้ (สำคัญมากตอนจะแก้)
-        df['sheet_row'] = df.index + 1 
-        df.columns = headers + ['sheet_row']
-        
-        # ตัดส่วน Dashboard และเก็บเนื้อข้อมูล
-        df = df.iloc[header_idx+1:].reset_index(drop=True)
-        all_data[ws.title] = df
-    return all_data
-
-# --- 3. ฟังก์ชันอัปเดตข้อมูลกลับไปที่ Sheets ---
-def update_sheet(ws_title, row_index, col_name, new_value):
     try:
-        gc = get_sheets_client()
         sh = gc.open('Copy of ไฟล์เก็บเคส2025V1')
-        ws = sh.worksheet(ws_title)
-        
-        # หาว่าคอลัมน์ที่ต้องการแก้อยู่ลำดับที่เท่าไหร่
-        headers = ws.row_values(ws.find(ws_title).row if not ws.row_values(1) else 1) # หาหัวตาราง
-        # เพื่อความชัวร์ เราจะขอหัวตารางล่าสุด
-        all_headers = ws.row_values(1) # สมมติหัวตารางอยู่แถว 1 (หรือตามระบบ Smart Header)
-        # แก้ไขแบบระบุพิกัด [แถว, คอลัมน์]
-        col_idx = all_headers.index(col_name) + 1
-        ws.update_cell(row_index, col_idx, new_value)
-        return True
-    except:
-        return False
+        worksheets = sh.worksheets()
+        all_data = {}
+        for ws in worksheets:
+            data = ws.get_all_values()
+            if not data: continue
+            df = pd.DataFrame(data)
+            header_idx = 0
+            max_cols = 0
+            for i in range(min(15, len(df))):
+                count = sum(1 for x in df.iloc[i] if str(x).strip() != "")
+                if count > max_cols:
+                    max_cols = count
+                    header_idx = i
+            headers = df.iloc[header_idx].tolist()
+            df['sheet_row'] = df.index + 1 
+            df.columns = headers + ['sheet_row']
+            df = df.iloc[header_idx+1:].reset_index(drop=True)
+            all_data[ws.title] = df
+        return all_data
+    except: return {}
 
-# --- 4. ส่วนแสดงผลหลัก ---
-st.title("📝 CS Case Intelligence & Editor")
-master_data = load_data_for_edit()
+# --- 4. เริ่มการทำงาน ---
+if login():
+    # แสดงชื่อผู้ใช้ที่มุมขวาบน
+    st.sidebar.markdown(f"👤 **ผู้ใช้งาน:** `{st.session_state.username}`")
+    st.sidebar.markdown(f"⏰ **เข้าระบบเมื่อ:** `{st.session_state.login_time}`")
+    
+    if st.sidebar.button("🚪 ออกจากระบบ"):
+        st.session_state.logged_in = False
+        st.rerun()
 
-search_val = st.text_input("🔍 ค้นหา ID หรือ IMEI เพื่อดูข้อมูลและแก้ไข:")
+    st.title("📝 CS Case Intelligence & Editor")
+    
+    # ส่วนเนื้อหาหลัก (ก๊อปจากเวอร์ชันที่พี่โอเคมาวาง)
+    master_data = load_data_for_edit()
+    search_val = st.text_input("🔍 ค้นหา ID หรือ IMEI:", placeholder="พิมพ์ข้อมูลที่ต้องการค้นหา...")
 
-if search_val:
-    q = search_val.strip().lower()
-    for title, df in master_data.items():
-        # ค้นหา
-        mask = df.astype(str).apply(lambda row: row.str.lower().str.contains(q, na=False).any(), axis=1)
-        res = df[mask]
-        
-        if not res.empty:
-            st.subheader(f"📂 แท็บ: {title}")
-            # แสดงข้อมูลที่ค้นหาเจอ
-            st.dataframe(res.drop(columns=['sheet_row']), use_container_width=True)
+    if search_val:
+        q = search_val.strip().lower()
+        found = False
+        for title, df in master_data.items():
+            mask = df.astype(str).apply(lambda row: row.str.lower().str.contains(q, na=False).any(), axis=1)
+            res = df[mask]
             
-            # สร้างฟอร์มแก้ไขข้อมูลสำหรับแถวที่เจอ
-            with st.expander("🛠️ แก้ไขข้อมูลในแถวนี้"):
-                col1, col2, col3 = st.columns(3)
-                # เลือกคอลัมน์ที่ต้องการแก้ (ดึงจากหัวตารางพี่เลย)
-                target_col = col1.selectbox(f"เลือกหัวข้อที่จะแก้ ({title})", res.columns.drop('sheet_row'))
-                new_val = col2.text_input(f"ค่าใหม่ที่จะใส่ใน {target_col}:")
-                row_in_sheet = res.iloc[0]['sheet_row'] # เอาเลขแถวจาก Sheets
+            if not res.empty:
+                found = True
+                st.markdown(f"### 📂 แท็บ: **{title}**")
+                st.dataframe(res.drop(columns=['sheet_row']), use_container_width=True, hide_index=True)
                 
-                if col3.button(f"💾 บันทึกการแก้ไข ({title})"):
-                    # สั่งอัปเดตไปที่ Sheets
-                    gc = get_sheets_client()
-                    sh = gc.open('Copy of ไฟล์เก็บเคส2025V1')
-                    ws = sh.worksheet(title)
+                with st.expander(f"🛠️ แก้ไขข้อมูลโดยคุณ {st.session_state.username}", expanded=True):
+                    col1, col2, col3 = st.columns([1, 1, 0.5])
+                    selectable_cols = [c for c in res.columns if c != 'sheet_row']
+                    target_col = col1.selectbox(f"เลือกหัวข้อ ({title})", selectable_cols, key=f"sel_{title}")
                     
-                    # หาพิกัดคอลัมน์
-                    current_headers = ws.row_values(1) # หรือแถวที่ระบุเป็นหัวตาราง
-                    try:
-                        c_idx = current_headers.index(target_col) + 1
-                        ws.update_cell(row_in_sheet, c_idx, new_val)
-                        st.success(f"อัปเดตข้อมูลในแท็บ {title} เรียบร้อย!")
-                        st.cache_data.clear() # ล้างแคชเพื่อให้โหลดข้อมูลใหม่ที่แก้แล้ว
-                    except Exception as e:
-                        st.error(f"หาหัวข้อไม่เจอ หรือเกิดข้อผิดพลาด: {e}")
-
-st.sidebar.warning("⚠️ การแก้ไขข้อมูลจะส่งผลกับไฟล์ Google Sheets ต้นฉบับทันที โปรดตรวจสอบความถูกต้องก่อนกดบันทึก")
+                    if target_col in DROPDOWN_CONFIG:
+                        new_val = col2.selectbox(f"เลือกค่าใหม่:", DROPDOWN_CONFIG[target_col], key=f"val_{title}")
+                    else:
+                        new_val = col2.text_input(f"พิมพ์ค่าใหม่:", key=f"inp_{title}")
+                    
+                    if col3.button(f"💾 บันทึก ({title})", key=f"btn_{title}"):
+                        row_in_sheet = int(res.iloc[0]['sheet_row'])
+                        with st.spinner('กำลังบันทึก...'):
+                            try:
+                                gc = get_sheets_client()
+                                sh = gc.open('Copy of ไฟล์เก็บเคส2025V1')
+                                ws = sh.worksheet(title)
+                                current_headers = ws.row_values(1) 
+                                if target_col in current_headers:
+                                    c_idx = current_headers.index(target_col) + 1
+                                    ws.update_cell(row_in_sheet, c_idx, new_val)
+                                    # 🎯 เพิ่ม Log ในระบบ (ถ้าพี่มีแท็บ Log ใน Sheets จะดีมาก)
+                                    st.success(f"✅ คุณ {st.session_state.username} แก้ไขข้อมูลเรียบร้อย!")
+                                    st.cache_data.clear()
+                                else:
+                                    st.error("หาคอลัมน์ไม่เจอ")
+                            except Exception as e:
+                                st.error(f"❌ Error: {e}")
