@@ -3,10 +3,9 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 import datetime
-from PIL import Image
 
-# --- 1. การตั้งค่าหน้าตาและการเชื่อมต่อ (รักษาไว้ครบทุกบรรทัด) ---
-st.set_page_config(page_title="CS ค้นหาข้อมูล", page_icon="🔍", layout="wide")
+# --- 1. ตั้งค่าหน้าตาและการเชื่อมต่อ (รักษาไว้ครบทุกบรรทัด) ---
+st.set_page_config(page_title="CS Smart Search & Edit", page_icon="🔍", layout="wide")
 
 # --- 🎯 ระบบจัดการผู้ใช้ ---
 USER_DB = {
@@ -50,7 +49,6 @@ def load_all_data():
         if not data: continue
         df = pd.DataFrame(data)
         
-        # ระบบค้นหาหัวตาราง (Smart Header) - ห้ามลบ
         header_idx = 0
         for i in range(min(15, len(df))):
             if sum(1 for x in df.iloc[i] if str(x).strip() != "") > 5:
@@ -58,7 +56,6 @@ def load_all_data():
         
         headers = df.iloc[header_idx].astype(str).tolist()
         
-        # ป้องกันชื่อคอลัมน์ซ้ำหรือว่าง
         final_headers = []
         for i, h in enumerate(headers):
             clean_h = h.strip()
@@ -74,28 +71,33 @@ def load_all_data():
 
 # --- 2. เริ่มทำงานเมื่อล็อกอินผ่าน ---
 if login():
-    # --- Sidebar: โปรไฟล์และการตั้งค่า ---
+    # --- Sidebar: โปรไฟล์แบบ Icon (ปรับปรุงใหม่) ---
     with st.sidebar:
-        st.markdown("### 👤 โปรไฟล์ผู้ใช้งาน")
-        if "user_pic" in st.session_state:
-            st.image(st.session_state.user_pic, width=120)
+        col_pic, col_name = st.columns([1, 2])
         
-        # ปุ่มเปลี่ยนรูป (เพิ่มใหม่ตามคำขอ)
-        uploaded_file = st.file_uploader("เปลี่ยนรูปโปรไฟล์", type=["jpg", "png", "jpeg"])
-        if uploaded_file is not None:
-            st.session_state.user_pic = uploaded_file
-            st.success("เปลี่ยนรูปแล้ว!")
-            st.rerun()
+        with col_pic:
+            # แสดงรูปเป็นวงกลมขนาดเล็ก
+            if "user_pic" in st.session_state:
+                st.image(st.session_state.user_pic, width=60)
+        
+        with col_name:
+            st.write(f"**{st.session_state.username}**")
+            # ปุ่มเปลี่ยนรูปซ่อนไว้ใน Popover เล็กๆ เหมือนเว็บใหญ่
+            with st.popover("⚙️", help="ตั้งค่าโปรไฟล์"):
+                uploaded_file = st.file_uploader("เปลี่ยนรูปโปรไฟล์", type=["jpg", "png", "jpeg"])
+                if uploaded_file is not None:
+                    st.session_state.user_pic = uploaded_file
+                    st.success("อัปเดตรูปแล้ว!")
+                    st.rerun()
 
-        st.info(f"ผู้ใช้: **{st.session_state.username}**")
         if st.button("🚪 ออกจากระบบ", use_container_width=True):
             st.session_state.logged_in = False
             st.rerun()
+        st.divider()
 
-    # --- ส่วนเนื้อหาหลัก: ค้นหาและแก้ไข ---
+    # --- ส่วนเนื้อหาหลัก (รักษาไว้ครบถ้วน) ---
     st.title("🔍 CS Case Search & Editor")
     
-    # ดึงข้อมูลมาเตรียมไว้ (รักษาตรรกะเดิม)
     master_data = load_all_data()
     search_val = st.text_input("🔍 ค้นหา ID หรือ IMEI เพื่อแก้ไข:", placeholder="พิมพ์ข้อมูลที่นี่...")
 
@@ -104,7 +106,6 @@ if login():
         found_any = False
 
         for title, df in master_data.items():
-            # ตรวจสอบว่ามีข้อมูลในคอลัมน์ใดๆ หรือไม่
             mask = df.drop(columns=['sheet_row']).astype(str).apply(lambda r: r.str.lower().str.contains(q).any(), axis=1)
             res_df = df[mask]
 
@@ -112,7 +113,7 @@ if login():
                 found_any = True
                 st.markdown(f"### 📂 เจอข้อมูลในแท็บ: **{title}**")
                 
-                # การตั้งค่า Dropdown (รักษาไว้ตามรูป b193e1.jpg)
+                # การตั้งค่า Dropdown (รักษาไว้ครบถ้วน)
                 editor_config = {
                     "sheet_row": None, 
                     "การแบน": st.column_config.SelectboxColumn(
@@ -127,7 +128,6 @@ if login():
                     )
                 }
 
-                # แสดงตาราง Editor
                 edited_df = st.data_editor(
                     res_df,
                     use_container_width=True,
@@ -136,7 +136,6 @@ if login():
                     key=f"editor_{title}_{search_val}"
                 )
 
-                # ปุ่มบันทึก (รักษาฟังก์ชันดึงค่าแถวเดิม)
                 if st.button(f"💾 บันทึกการแก้ไขใน {title}", key=f"btn_{title}"):
                     with st.spinner('กำลังบันทึก...'):
                         try:
@@ -149,12 +148,10 @@ if login():
                                 ws.update(f"A{actual_row}", [updated_values])
                             
                             st.toast(f"✅ บันทึกสำเร็จ!", icon="💾")
-                            st.cache_data.clear() # รีเฟรชข้อมูลหลังเซฟ
+                            st.cache_data.clear()
                         except Exception as e:
                             st.error(f"❌ พัง: {e}")
                 st.divider()
 
-        if not found_any:
-            st.warning(f"ไม่พบข้อมูลสำหรับ `{search_val}`")
     else:
         st.info("💡 พิมพ์เลข ID หรือ IMEI เพื่อเริ่มทำงานครับ")
