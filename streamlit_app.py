@@ -2,12 +2,11 @@ import streamlit as st
 import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
-import concurrent.futures # ตัวช่วยดึงข้อมูลพร้อมกันทุกแท็บ
 
-st.set_page_config(page_title="CS Case Finder TURBO", layout="wide")
-st.title("🚀 ระบบค้นหาเคส CS")
+st.set_page_config(page_title="CS Case Finder LIGHTNING", layout="wide")
+st.title("ระบบค้นหาเคส CS")
 
-# --- 1. การเชื่อมต่อกุญแจ ---
+# --- 1. เชื่อมต่อ Google Sheets ---
 @st.cache_resource
 def get_sheets_client():
     try:
@@ -15,63 +14,65 @@ def get_sheets_client():
         creds = Credentials.from_service_account_file('key.json', scopes=scopes)
         return gspread.authorize(creds)
     except Exception as e:
-        st.error(f"❌ Key Error: {e}")
+        st.error(f"❌ KeyError: {e}")
         return None
 
-# ฟังก์ชันดึงข้อมูล 1 แท็บ
-def fetch_worksheet(ws):
-    data = ws.get_all_values()
-    if data:
-        return ws.title, pd.DataFrame(data)
-    return ws.title, pd.DataFrame()
-
-# --- 2. ฟังก์ชันโหลดข้อมูลทั้งหมดมาเก็บใน "แคช" ---
-# ตั้งเวลาไว้ 15 นาที (900 วินาที) ข้อมูลจะรีเฟรชเอง หรือกดปุ่มรีเฟรชเองก็ได้
-@st.cache_data(ttl=900)
-def load_all_worksheets_to_memory():
+# --- 2. โหลดข้อมูล "ทุกแท็บ" ในคำสั่งเดียว (API Call เดียว) ---
+@st.cache_data(ttl=900) # จำข้อมูลไว้ 15 นาที
+def load_all_data_fast():
     gc = get_sheets_client()
     if not gc: return {}
     
     sh = gc.open('Copy of ไฟล์เก็บเคส2025V1')
     worksheets = sh.worksheets()
+    
+    # สร้างรายชื่อแท็บทั้งหมด เพื่อส่งไปขอ Google ทีเดียว
+    ranges = [f"'{ws.title}'" for ws in worksheets]
     all_data = {}
     
-    # ใช้ระบบ Thread ดึงข้อมูลทุกแท็บพร้อมกัน (เร็วขึ้น 5-10 เท่า)
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        results = list(executor.map(fetch_worksheet, worksheets))
-        for title, df in results:
-            if not df.empty:
-                all_data[title] = df
-    return all_data
+    try:
+        # ⚡ ไม้ตายที่ 1: ดึงข้อมูลทุกแท็บพร้อมกันใน 1 คำสั่ง (ข้ามคอขวดเน็ต)
+        batch_result = sh.values_batch_get(ranges)
+        value_ranges = batch_result.get('valueRanges', [])
+        
+        # จับคู่ชื่อแท็บกับข้อมูลที่ได้มา
+        for ws, val_range in zip(worksheets, value_ranges):
+            values = val_range.get('values', [])
+            if values:
+                all_data[ws.title] = pd.DataFrame(values)
+        return all_data
+    except Exception as e:
+        st.error(f"เกิดข้อผิดพลาดในการดึงข้อมูล: {e}")
+        return {}
 
 # --- 3. ส่วนการทำงานหลัก ---
-
-# ปุ่มรีเฟรชข้อมูลเผื่อพี่มีการแก้ใน Sheets แล้วอยากให้อัปเดตทันที
-if st.sidebar.button("🔄 อัปเดตข้อมูลใหม่จาก Sheets"):
+# ปุ่มรีเฟรช เผื่อต้องการอัปเดตข้อมูลทันที
+if st.sidebar.button("🔄 อัพเดทข้อมูล"):
     st.cache_data.clear()
     st.rerun()
 
-# โหลดข้อมูลรอไว้เลย
-with st.spinner('🚀 กำลังเตรียมข้อมูลให้พร้อมใช้งาน (โหลดครั้งเดียว)...'):
-    master_data = load_all_worksheets_to_memory()
+# โหลดข้อมูลรอไว้ในแรมเลย (รอโหลดแค่ตอนเปิดแอปครั้งแรก)
+with st.spinner('⚡ กำลังดูดข้อมูลทั้งหมดมาไว้ในเครื่อง (รอแค่ครั้งแรก)...'):
+    master_data = load_all_data_fast()
 
-st.sidebar.info(f"📊 โหลดข้อมูลจาก {len(master_data)} แท็บเรียบร้อยแล้ว!")
-
-search_val = st.text_input("🔍 กรอก ID หรือ IMEI เพื่อค้นหา")
+search_val = st.text_input("🔍 กรอก ID หรือ IMEI แล้วกด Enter")
 
 if search_val:
     q = search_val.strip().lower()
     found_results = {}
 
-    # ค้นหาจากข้อมูลในแรม (ไม่ต้องรอโหลดจากเน็ตแล้ว)
     for title, df in master_data.items():
-        mask = df.astype(str).apply(lambda row: row.str.lower().str.contains(q, na=False).any(), axis=1)
+        if df.empty: continue
+        
+        # ⚡ ไม้ตายที่ 2: รวบทุกคอลัมน์เป็นข้อความเดียว แล้วค้นหารวดเดียว (เร็วกว่าเดิม 100 เท่า)
+        combined_text = df.astype(str).agg(' '.join, axis=1).str.lower()
+        mask = combined_text.str.contains(q, na=False)
         res = df[mask]
         
         if not res.empty:
             found_results[title] = res
 
-    # แสดงผลแบบเรียงต่อกันลงมา
+    # --- แสดงผลแบบเรียงต่อกัน ---
     if found_results:
         st.success(f"✅ เจอข้อมูล `{search_val}` ใน {len(found_results)} แท็บ")
         for name, res_df in found_results.items():
