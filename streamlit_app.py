@@ -3,68 +3,56 @@ import pandas as pd
 from google.cloud import bigquery
 from google.oauth2 import service_account
 
-st.set_page_config(page_title="BigQuery Multi-Search", layout="wide")
-st.title("🚀 ระบบค้นหา ID ทุกตารางใน BigQuery")
+st.set_page_config(page_title="Debug Search", layout="wide")
+st.title("🔎 ระบบสแกนหา ID (เวอร์ชันละเอียด)")
 
-# --- 1. เชื่อมต่อกุญแจ (ใช้ Scopes ให้ครบเพื่ออ่าน Sheets ที่เชื่อมกับ BigQuery) ---
 @st.cache_resource
 def get_bq_client():
     try:
-        scopes = [
-            "https://www.googleapis.com/auth/cloud-platform",
-            "https://www.googleapis.com/auth/drive",
-            "https://www.googleapis.com/auth/bigquery"
-        ]
+        scopes = ["https://www.googleapis.com/auth/cloud-platform", "https://www.googleapis.com/auth/drive"]
         creds = service_account.Credentials.from_service_account_file('key.json', scopes=scopes)
         return bigquery.Client(credentials=creds, project=creds.project_id)
     except Exception as e:
-        st.error(f"❌ กุญแจมีปัญหา: {e}")
+        st.error(f"❌ กุญแจพัง: {e}")
         return None
 
 client = get_bq_client()
-
-# --- 2. ส่วนการค้นหา ---
-search_id = st.text_input("🔍 กรอก ID พนักงานเพื่อค้นหาในทุกตาราง:", placeholder="เช่น 9300191")
+search_id = st.text_input("🔍 ใส่ ID พนักงาน:")
 
 if client and search_id:
-    # ระบุชื่อโปรเจกต์และ Dataset
     project_id = "sturdy-sentry-487204-s4"
     dataset_id = "cs_database"
     
     try:
-        # ดึงรายชื่อตารางทั้งหมดที่มีใน Dataset นี้ (แทนการเปิดดูทุกแท็บ)
         tables = client.list_tables(f"{project_id}.{dataset_id}")
-        
         found_any = False
-        st.markdown(f"### 🔎 ผลการค้นหาสำหรับ ID: `{search_id}`")
 
         for table in tables:
             full_table_id = f"{project_id}.{dataset_id}.{table.table_id}"
             
-            # ดึงหัวตารางมาเช็กก่อน 1 แถวเพื่อหาชื่อคอลัมน์
-            check_df = client.query(f"SELECT * FROM `{full_table_id}` LIMIT 1").to_dataframe()
-            cols = check_df.columns.tolist()
+            # ดึงข้อมูล 5 แถวแรกมาโชว์ให้พี่ดูเลยว่า 'ของจริง' หน้าตาเป็นไง
+            st.write(f"📊 กำลังค้นหาในตาราง: `{table.table_id}`")
+            sample_df = client.query(f"SELECT * FROM `{full_table_id}` LIMIT 5").to_dataframe()
             
-            # สร้างคำสั่ง SQL ค้นหา (ค้นหาในทุกคอลัมน์ที่เป็นไปได้ เผื่อ ID อยู่คนละที่)
-            # เราจะสร้าง WHERE col1='ID' OR col2='ID' ...
-            where_clause = " OR ".join([f"CAST({col} AS STRING) = '{search_id}'" for col in cols])
-            sql = f"SELECT * FROM `{full_table_id}` WHERE {where_clause}"
+            # สร้าง Query ที่ 'ตัดช่องว่าง' และ 'ค้นหาแบบยืดหยุ่น'
+            # ค้นหาทุกคอลัมน์ โดยตัด Space ทิ้งก่อนเทียบ
+            where_clauses = [f"TRIM(CAST({col} AS STRING)) = '{search_id.strip()}'" for col in sample_df.columns]
+            sql = f"SELECT * FROM `{full_table_id}` WHERE {' OR '.join(where_clauses)}"
             
-            try:
-                result_df = client.query(sql).to_dataframe()
-                
-                if not result_df.empty:
-                    found_any = True
-                    # แยกโชว์ตามชื่อตาราง (เหมือนแยกตามแท็บ)
-                    with st.expander(f"✅ พบข้อมูลในตาราง: {table.table_id}", expanded=True):
-                        st.dataframe(result_df, use_container_width=True)
-            except:
-                continue # ข้ามตารางที่มีปัญหาเรื่องโครงสร้าง
+            result_df = client.query(sql).to_dataframe()
+            
+            if not result_df.empty:
+                found_any = True
+                st.success(f"✅ เจอแล้วในตาราง {table.table_id}!")
+                st.dataframe(result_df)
+            else:
+                # ถ้าไม่เจอ โชว์ข้อมูลที่มันมีอยู่ให้พี่ดู 5 แถว เพื่อเทียบว่าเราพิมพ์ผิดตรงไหน
+                with st.expander(f"❌ ไม่พบใน {table.table_id} (คลิกเพื่อดูข้อมูลตัวอย่างในตารางนี้)"):
+                    st.write("นี่คือข้อมูล 5 แถวแรกที่ระบบเห็นตอนนี้:")
+                    st.dataframe(sample_df)
 
         if not found_any:
-            st.warning(f"❌ ไม่พบ ID '{search_id}' ในตารางใดๆ เลย")
+            st.error(f"หา ID `{search_id}` ไม่พบในทุกตารางครับพี่")
 
     except Exception as e:
-        st.error(f"เกิดข้อผิดพลาด: {e}")
-else:
-    st.info("💡 ใส่ ID ด้านบน ระบบจะควานหาข้อมูลจากทุกตารางใน BigQuery ให้ทันทีครับ")
+        st.error(f"Error: {e}")
