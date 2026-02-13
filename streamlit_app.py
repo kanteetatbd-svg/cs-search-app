@@ -167,7 +167,7 @@ if login():
 
     # --- ส่วนเนื้อหาหลัก ---
     if app_mode == "🔍 CS Smart Search":
-        st.markdown("<h1 class='main-header'>CS INTELLIGENCE</h1>", unsafe_allow_html=True)
+        st.markdown("<h1 class='main-header'>CS SEAECH</h1>", unsafe_allow_html=True)
         target_file = 'Copy of ไฟล์เก็บเคส2025V1'
     else:
         st.markdown("<h1 class='main-header'>REFUND TRACKER</h1>", unsafe_allow_html=True)
