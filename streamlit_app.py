@@ -44,8 +44,8 @@ if not st.session_state.logged_in:
 CASE_IDS = [id.strip() for id in ['1x1VKAo6pRU7dtjgliSyR-aX3ZQaGeMW9PdFb2HosGbo', '1TRTLSmr4Zh9t0aXpVg5IpiYxEAIIKy1PSCEHHIiqNdY']]
 REFUND_ID = '1auT1zB7y9LLJ6EgIaJTjmOPQA2_HZaxhWk2qM-WZzrA'.strip()
 
-# 📝 นำ ID ไฟล์ Google Sheets สำหรับเก็บประวัติการแก้ไขมาใส่ในเครื่องหมายคำพูดด้านล่างนี้ครับ
-AUDIT_LOG_ID = '1MfPPlI9T5FQV8od2pIyIvGmBG1-ScvpUM__d5SCkQU8'.strip() 
+# 📝 เอา ID ไฟล์สมุดพกมาใส่ตรงนี้ครับ
+AUDIT_LOG_ID = 'เอา_ID_ไฟล์สมุดพกมาใส่ตรงนี้'.strip() 
 
 @st.cache_data(ttl=3600)
 def load_data(sheet_id):
@@ -73,9 +73,7 @@ def load_data(sheet_id):
                 h_idx = next((i for i, row in df.iterrows() if sum(1 for v in row if str(v).strip()) > 5), 0)
                 df.columns = [h.strip() if h.strip() else f"Col_{i+1}" for i, h in enumerate(df.iloc[h_idx])]
                 df['sheet_row'] = df.index + 1
-                
                 df['search_index'] = df.astype(str).agg(' '.join, axis=1).str.lower()
-                
                 tabs[ws.title] = df.iloc[h_idx+1:].reset_index(drop=True)
             except:
                 continue
@@ -104,9 +102,16 @@ with st.sidebar:
         st.session_state.logged_in = False
         st.rerun()
 
-# --- 6. MAIN SYSTEM ---
+# --- 6. 🚀 PRE-LOAD ALL DATA (โหลดทุกอย่างตุนไว้ตั้งแต่เข้าแอป) ---
+ALL_IDS = CASE_IDS + [REFUND_ID]
+for s_id in ALL_IDS:
+    if s_id not in st.session_state.loaded_sheets:
+        msg = "ข้อมูล CS" if s_id in CASE_IDS else "ข้อมูล Refund"
+        with st.spinner(f'กำลังโหลด {msg} อัตโนมัติรวดเดียว... (โหลดครั้งแรกอาจใช้เวลาหน่อยนะครับ)'):
+            st.session_state.loaded_sheets[s_id] = load_data(s_id)
+
+# --- 7. MAIN SYSTEM ---
 if mode == "📋 ประวัติการแก้ไข":
-    # --- โหมดตรวจสอบประวัติ (Audit Logs) ---
     st.markdown("<h1 class='main-header'>AUDIT LOGS</h1>", unsafe_allow_html=True)
     st.markdown("ตรวจสอบประวัติการแก้ไขข้อมูลทั้งหมดโดยไม่ต้องเปิด Google Sheets")
     
@@ -128,27 +133,20 @@ if mode == "📋 ประวัติการแก้ไข":
                 st.error(f"❌ ดึงข้อมูลประวัติพัง: {e}")
 
 else:
-    # --- โหมดค้นหาปกติ (CS Search / Refund) ---
-    target = CASE_IDS if mode == "🔍 CS Search" else REFUND_ID
+    # เลือกเฉพาะ ID ที่ตรงกับโหมดปัจจุบันมาใช้งาน
+    target_ids = CASE_IDS if mode == "🔍 CS Search" else [REFUND_ID]
     st.markdown(f"<h1 class='main-header'>{mode.split(' ')[1]} SYSTEM</h1>", unsafe_allow_html=True)
 
     master = {}
-    ids = target if isinstance(target, list) else [target]
-
-    for s_id in ids:
-        if s_id not in st.session_state.loaded_sheets:
-            with st.spinner('กำลังเตรียมฐานข้อมูลความเร็วสูง... (โหลดครั้งแรก)'):
-                st.session_state.loaded_sheets[s_id] = load_data(s_id)
-                
-        res = st.session_state.loaded_sheets[s_id]
+    for s_id in target_ids:
+        res = st.session_state.loaded_sheets.get(s_id)
         if res:
             for tab, df in res.items():
-                master[f"{tab} ({s_id[-4:]})" if len(ids) > 1 else tab] = {"df": df, "id": s_id, "tab": tab}
+                master[f"{tab} ({s_id[-4:]})" if len(target_ids) > 1 else tab] = {"df": df, "id": s_id, "tab": tab}
 
     if master:
         st.markdown('<div class="status-bar-ready">✅ ระบบพร้อม! ค้นหาไวระดับ SQL Database</div>', unsafe_allow_html=True)
         
-        # 🚀 เปลี่ยนกลับเป็นข้อความคลีนๆ เหมือนเดิม
         q_raw = st_keyup("", placeholder=f"⚡ พิมพ์ Keyword ค้นหาใน {mode} (เว้นวรรคเพื่อหาหลายคำได้)...", label_visibility="collapsed", key=f"search_{mode}", debounce=300)
         q = str(q_raw).strip().lower() if q_raw else ""
         
@@ -192,7 +190,6 @@ else:
                                 
                                 for _, r in changed_rows.iterrows():
                                     update_list = [str(r[col]) for col in display_df.columns if col != 'sheet_row']
-                                    
                                     ws.update(f"A{int(r['sheet_row'])}", [update_list])
                                     
                                     if AUDIT_LOG_ID and AUDIT_LOG_ID != 'เอา_ID_ไฟล์สมุดพกมาใส่ตรงนี้':
