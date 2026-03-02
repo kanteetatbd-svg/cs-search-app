@@ -3,8 +3,8 @@ import pandas as pd
 import gspread
 import time  
 import duckdb  
-import io # 🚀 เครื่องมือใหม่สำหรับอ่าน CSV
-import google.auth.transport.requests # 🚀 ท่าลับสำหรับ Bypass การดึงข้อมูล
+import io 
+import google.auth.transport.requests 
 from st_keyup import st_keyup  
 from google.oauth2.service_account import Credentials
 
@@ -47,7 +47,13 @@ CASE_IDS = [id.strip() for id in ['1x1VKAo6pRU7dtjgliSyR-aX3ZQaGeMW9PdFb2HosGbo'
 REFUND_ID = '1auT1zB7y9LLJ6EgIaJTjmOPQA2_HZaxhWk2qM-WZzrA'.strip()
 AUDIT_LOG_ID = '1MfPPlI9T5FQV8od2pIyIvGmBG1-ScvpUM__d5SCkQU8'.strip() 
 
-# 🚀 รายชื่อ 5 แท็บที่อนุญาตให้โหลด (แท็บอื่นจะถูกเตะทิ้งแต่แรกเพื่อความไว)
+# 🚀 1. รายชื่อแท็บ CS ที่ต้องการโหลด (ถ้าระบุตรงนี้ได้ จะเร็วขึ้นมาก! ถ้าปล่อยว่าง [] มันจะโหลดทุกแท็บ)
+ALLOWED_CS_TABS = [
+    # "ชื่อแท็บ CS ที่ 1", 
+    # "ชื่อแท็บ CS ที่ 2",
+]
+
+# 🚀 2. รายชื่อแท็บ Refund ที่ต้องการโหลด
 ALLOWED_REFUND_TABS = [
     "ค้นหา Refuned GG ที่ไม่ได้อยู่ในไฟล์2026 (หลัก)", 
     "RefundGG2026", 
@@ -63,22 +69,20 @@ def load_data(sheet_id, target_tabs=None):
         gc = gspread.authorize(creds)
         sh = gc.open_by_key(sheet_id)
         
-        # 🚀 สร้างเส้นทางพิเศษ (Authorized Session) สำหรับดูดไฟล์ CSV
         authed_session = google.auth.transport.requests.AuthorizedSession(creds)
         
         tabs = {}
         for ws in sh.worksheets():
             ws_title = ws.title.strip()
             
-            # 🚀 ถ้ามีเป้าหมาย แล้วแท็บนี้ไม่เกี่ยว ให้ข้ามไปเลย ไม่ต้องเสียเวลาโหลด!
-            if target_tabs and ws_title not in target_tabs:
+            # ข้ามแท็บที่ไม่เกี่ยวทันที!
+            if target_tabs and len(target_tabs) > 0 and ws_title not in target_tabs:
                 continue
                 
             max_retries = 3
             df = pd.DataFrame()
             for attempt in range(max_retries):
                 try:
-                    # 🚀 ท่าลับ: โหลดแบบ Direct CSV Export เร็วกว่าเดิม 3 เท่า
                     url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={ws.id}"
                     response = authed_session.get(url, timeout=15)
                     
@@ -87,8 +91,6 @@ def load_data(sheet_id, target_tabs=None):
                         continue
                         
                     response.raise_for_status()
-                    
-                    # แปลง CSV เป็นตาราง Pandas แบบสายฟ้าแลบ
                     df = pd.read_csv(io.StringIO(response.text), header=None, dtype=str).fillna("")
                     break 
                 except Exception as e:
@@ -108,7 +110,6 @@ def load_data(sheet_id, target_tabs=None):
             except:
                 continue
                 
-            # เบรกลดลงเหลือ 0.5 วิ เพราะ CSV กินโควตาน้อยกว่า
             time.sleep(0.5)
             
         return tabs
@@ -133,19 +134,8 @@ with st.sidebar:
         st.session_state.logged_in = False
         st.rerun()
 
-# --- 6. 🚀 PRE-LOAD ALL DATA ---
-# แยกโหลด CS (โหลดทุกแท็บ) และ Refund (โหลดเฉพาะแท็บที่กำหนด)
-for s_id in CASE_IDS:
-    if s_id not in st.session_state.loaded_sheets:
-        with st.spinner('กำลังดึงข้อมูล... ⚡'):
-            st.session_state.loaded_sheets[s_id] = load_data(s_id)
-            
-if REFUND_ID not in st.session_state.loaded_sheets:
-    with st.spinner('กำลังโหลดข้อมูล Refund... 🚀'):
-        # 🚀 ส่งรายชื่อแท็บไปให้ฟังก์ชัน เพื่อบล็อกไม่ให้โหลดแท็บอื่น
-        st.session_state.loaded_sheets[REFUND_ID] = load_data(REFUND_ID, target_tabs=ALLOWED_REFUND_TABS)
 
-# --- 7. MAIN SYSTEM ---
+# --- 6. MAIN SYSTEM (Lazy Load โหลดเฉพาะหน้าที่เปิด) ---
 if mode == "📋 ประวัติการแก้ไข":
     st.markdown("<h1 class='main-header'>AUDIT LOGS</h1>", unsafe_allow_html=True)
     st.markdown("ตรวจสอบประวัติการแก้ไขข้อมูลทั้งหมดโดยไม่ต้องเปิด Google Sheets")
@@ -168,11 +158,24 @@ if mode == "📋 ประวัติการแก้ไข":
                 st.error(f"❌ ดึงข้อมูลประวัติพัง: {e}")
 
 else:
-    target_ids = CASE_IDS if mode == "🔍 CS Search" else [REFUND_ID]
+    # 🚀 ตั้งค่าเป้าหมายการโหลดตามเมนูที่กด
+    if mode == "🔍 CS Search":
+        target_ids = CASE_IDS
+        target_tabs = ALLOWED_CS_TABS
+    else:
+        target_ids = [REFUND_ID]
+        target_tabs = ALLOWED_REFUND_TABS
+
     st.markdown(f"<h1 class='main-header'>{mode.split(' ')[1]} SYSTEM</h1>", unsafe_allow_html=True)
 
     master = {}
+    
+    # 🚀 โหลดข้อมูลเฉพาะ ID ที่เกี่ยวข้องกับหน้านี้เท่านั้น
     for s_id in target_ids:
+        if s_id not in st.session_state.loaded_sheets:
+            with st.spinner(f'กำลังโหลดข้อมูลลงฐานข้อมูล... ⚡'):
+                st.session_state.loaded_sheets[s_id] = load_data(s_id, target_tabs=target_tabs)
+
         res = st.session_state.loaded_sheets.get(s_id)
         if res:
             for tab, df in res.items():
@@ -200,7 +203,6 @@ else:
                     res_df = pd.DataFrame() 
                 
                 if not res_df.empty:
-                    # 🚀 ตัดข้อมูลซ้ำ (Deduplicate)
                     check_cols = [c for c in res_df.columns if c not in ['sheet_row', 'search_index']]
                     if check_cols:
                         res_df = res_df.drop_duplicates(subset=check_cols)
