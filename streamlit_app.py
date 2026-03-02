@@ -150,38 +150,40 @@ if login():
             st.session_state.logged_in = False
             st.rerun()
 
-    # --- ส่วนการจัดการเนื้อหา (Core Content) ---
+# --- 🎯 [เริ่มส่วนที่ 2: จัดการเนื้อหาและการโหลดข้อมูล] ---
+    
+    # 1. กำหนดเป้าหมาย (รองรับทั้ง ID เดียว และ LIST)
     if app_mode == "📋 FAQ":
         target_id = FAQ_SHEET_ID
         header_text = "FAQ DATABASE"
     elif app_mode == "🔍 CS Smart Search":
-        target_id = CASE_SHEET_LIST
+        target_id = CASE_SHEET_LIST  # ดึงข้อมูลจาก 2 ไฟล์ (2025+2026)
         header_text = "CS INTELLIGENCE"
     else:
         target_id = REFUND_SHEET_ID
         header_text = "REFUND TRACKER"
 
+    # ✅ แก้ไขจุดที่ Syntax Error: ตรวจสอบเครื่องหมายคำพูดให้ครบ
     st.markdown(f"<h1 class='main-header'>{header_text}</h1>", unsafe_allow_html=True)
 
-    # 🚀 โหลดข้อมูลรองรับทั้งไฟล์เดียวและหลายไฟล์
+    # 2. 🚀 ระบบโหลดข้อมูลอัจฉริยะ (Unified Engine)
     master_data = {}
     with st.spinner('กำลังเชื่อมต่อฐานข้อมูล...'):
-        if isinstance(target_id, list):
-            for s_id in target_id:
-                file_data = load_data_from_file(s_id)
-                if file_data:
-                    for tab, df in file_data.items():
-                        # เก็บ ID ไฟล์ไว้ด้วยเพื่อใช้ตอนบันทึกข้อมูล
-                        master_data[f"{tab} | ID: {s_id[:5]}..."] = {"data": df, "file_id": s_id, "tab_real_name": tab}
-        else:
-            file_data = load_data_from_file(target_id)
+        # ตรวจสอบว่าเป็น List หรือ String เพื่อโหลดข้อมูลให้ถูกวิธี
+        ids_to_process = target_id if isinstance(target_id, list) else [target_id]
+        
+        for s_id in ids_to_process:
+            file_data = load_data_from_file(s_id)
             if file_data:
                 for tab, df in file_data.items():
-                    master_data[tab] = {"data": df, "file_id": target_id, "tab_real_name": tab}
+                    # ถ้ามีหลายไฟล์ ให้ห้อยท้ายชื่อแท็บด้วย ID 4 ตัวท้ายเพื่อแยกปี
+                    display_name = f"{tab} ({s_id[-4:]})" if len(ids_to_process) > 1 else tab
+                    master_data[display_name] = {"data": df, "file_id": s_id, "tab_real_name": tab}
 
+    # 3. ส่วนการค้นหาและแสดงผล
     if master_data:
         st.markdown('<div class="status-bar-ready">✅ พร้อมใช้งาน</div>', unsafe_allow_html=True)
-        search_val = st.text_input("", placeholder=f"🔍 ค้นหา ID หรือข้อมูลใน {app_mode}...", label_visibility="collapsed")
+        search_val = st.text_input("", placeholder=f"🔍 ค้นหาข้อมูลใน {app_mode}...", label_visibility="collapsed")
 
         if search_val:
             query = search_val.strip().lower()
@@ -189,7 +191,7 @@ if login():
             
             for display_name, info in master_data.items():
                 df = info["data"]
-                # ค้นหาในทุกคอลัมน์
+                # ค้นหาแบบไม่สนตัวพิมพ์เล็ก-ใหญ่ในทุกคอลัมน์
                 match_mask = df.drop(columns=['sheet_row']).astype(str).apply(
                     lambda row: row.str.lower().str.contains(query).any(), axis=1
                 )
@@ -200,38 +202,35 @@ if login():
                     st.markdown(f"<div style='background: rgba(59, 130, 246, 0.1); padding: 15px; border-radius: 12px; border-left: 6px solid #3b82f6; margin: 20px 0;'>📁 หมวดหมู่: <b>{display_name}</b></div>", unsafe_allow_html=True)
                     
                     if app_mode != "📋 FAQ":
+                        # ส่วน Search และ Refund ให้แก้ไขได้
                         edit_cfg = {
                             "sheet_row": None, 
                             "การแบน": st.column_config.SelectboxColumn("การแบน", options=["ปลด", "แบน", "รอตรวจสอบ"]),
                             "สถานะ": st.column_config.SelectboxColumn("สถานะ", options=["ปกติ", "ไม่ปกติ", "รอดำเนินการ"])
                         }
+                        # ป้องกัน Key ซ้ำด้วยการใช้ display_name
+                        updated_df = st.data_editor(result_df, use_container_width=True, hide_index=True, column_config=edit_cfg, key=f"editor_{display_name}_{search_val}")
                         
-                        # สร้าง Key ให้ไม่ซ้ำกันตามชื่อแท็บและคำค้นหา
-                        editor_key = f"ed_{display_name}_{search_val}"
-                        updated_df = st.data_editor(result_df, use_container_width=True, hide_index=True, column_config=edit_cfg, key=editor_key)
-                        
-                        if st.button(f"💾 บันทึกการเปลี่ยนแปลงใน {display_name}", key=f"btn_{display_name}"):
-                            with st.spinner('กำลังบันทึกข้อมูล...'):
+                        if st.button(f"💾 บันทึกใน {display_name}", key=f"save_btn_{display_name}"):
+                            with st.spinner('กำลังบันทึก...'):
                                 try:
                                     gc = get_sheets_client()
                                     sh = gc.open_by_key(info["file_id"])
                                     ws = sh.worksheet(info["tab_real_name"])
-                                    
                                     for _, r in updated_df.iterrows():
                                         row_num = int(r['sheet_row'])
-                                        new_row_values = r.drop('sheet_row').astype(str).tolist()
-                                        ws.update(f"A{row_num}", [new_row_values])
-                                    
+                                        new_row_vals = r.drop('sheet_row').astype(str).tolist()
+                                        ws.update(f"A{row_num}", [new_row_vals])
                                     st.toast("✅ บันทึกสำเร็จ!", icon="💎")
                                     st.cache_data.clear()
                                 except Exception as err:
-                                    st.error(f"❌ บันทึกพลาด: {err}")
+                                    st.error(f"❌ พลาด: {err}")
                     else:
-                        # FAQ โชว์อย่างเดียว ไม่แก้
+                        # หน้า FAQ แสดงผลอย่างเดียว
                         st.dataframe(result_df.drop(columns=['sheet_row']), use_container_width=True, hide_index=True)
                     st.divider()
 
             if not found_flag:
                 st.warning(f"❌ ไม่พบข้อมูลสำหรับ: {search_val}")
     else:
-        st.info("📡 ตรวจสอบการแชร์ไฟล์ Google Sheets ให้กับ Service Account...")
+        st.info("📡 กรุณาตรวจสอบ ID ไฟล์ในส่วน [CONFIG] และสิทธิ์การเข้าถึง...")
