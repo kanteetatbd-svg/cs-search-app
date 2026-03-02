@@ -45,7 +45,7 @@ CASE_IDS = [id.strip() for id in ['1x1VKAo6pRU7dtjgliSyR-aX3ZQaGeMW9PdFb2HosGbo'
 REFUND_ID = '1auT1zB7y9LLJ6EgIaJTjmOPQA2_HZaxhWk2qM-WZzrA'.strip()
 
 # 📝 เอา ID ไฟล์สมุดพกมาใส่ตรงนี้ครับ
-AUDIT_LOG_ID = 'เอา_ID_ไฟล์สมุดพกมาใส่ตรงนี้'.strip() 
+AUDIT_LOG_ID = '1MfPPlI9T5FQV8od2pIyIvGmBG1-ScvpUM__d5SCkQU8'.strip() 
 
 @st.cache_data(ttl=3600)
 def load_data(sheet_id):
