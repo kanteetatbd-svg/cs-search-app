@@ -3,8 +3,9 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 
-# --- 1. การตั้งค่าหน้าจอและ CSS (คงเดิม) ---
+# --- 1. การตั้งค่าหน้าจอและ CSS Premium ---
 st.set_page_config(page_title="CS Smart Intelligence", page_icon="💎", layout="wide")
+
 st.markdown("""
     <style>
     .stApp { background: linear-gradient(-45deg, #0f172a, #1e293b, #0f172a, #172554); background-size: 400% 400%; animation: gradient 15s ease infinite; }
@@ -38,10 +39,11 @@ def login():
         return False
     return True
 
-# --- 3. [CONFIG] ID ไฟล์ Google Sheets (ดึงจาก URL ที่พี่ส่งมาแล้ว) ---
-FAQ_SHEET_ID = '1DkCgWps-wR4kaqMQp9eATV2S0uCf8nTe' 
-CASE_SHEET_LIST = ['1x1VKAo6pRU7dtjgliSyR-aX3ZQaGeMW9PdFb2HosGbo', '1TRTLSmr4Zh9t0aXpVg5IpiYxEAIIKy1PSCEHHIiqNdY']
-REFUND_SHEET_ID = '1auT1zB7y9LLJ6EgIaJTjmOPQA2_HZaxhWk2qM-WZzrA'
+# --- 3. [CONFIG] ID ไฟล์ Google Sheets ---
+# ใช้ .strip() เพื่อป้องกันช่องว่างที่อาจติดมาตอนก๊อปปี้ครับ
+FAQ_SHEET_ID = '1DkCgWps-wR4kaqMQp9eATV2S0uCf8nTe'.strip() 
+CASE_SHEET_LIST = [id.strip() for id in ['1x1VKAo6pRU7dtjgliSyR-aX3ZQaGeMW9PdFb2HosGbo', '1TRTLSmr4Zh9t0aXpVg5IpiYxEAIIKy1PSCEHHIiqNdY']]
+REFUND_SHEET_ID = '1auT1zB7y9LLJ6EgIaJTjmOPQA2_HZaxhWk2qM-WZzrA'.strip()
 
 @st.cache_resource
 def get_sheets_client():
@@ -61,8 +63,7 @@ def load_data_from_file(sheet_id):
             header_idx = 0
             for i in range(min(15, len(df))):
                 active_cells = sum(1 for val in df.iloc[i] if str(val).strip() != "")
-                # ✅ แก้ไขจุดตาย: ปรับเป็น >= 1 เพื่อให้รองรับไฟล์ FAQ
-                if active_cells >= 1: 
+                if active_cells >= 1: # ✅ ปรับเกณฑ์คอลัมน์แล้ว
                     header_idx = i
                     break
             headers = df.iloc[header_idx].astype(str).tolist()
@@ -74,7 +75,10 @@ def load_data_from_file(sheet_id):
             df.columns = processed_headers + ['sheet_row']
             all_tabs[ws.title] = df.iloc[header_idx+1:].reset_index(drop=True)
         return all_tabs
-    except: return None
+    except Exception as e:
+        # 🚨 จุดสำคัญ: โชว์ Error จริงๆ ออกมาเลยว่าทำไมโหลดไม่ได้
+        st.sidebar.error(f"Error Loading {sheet_id[:5]}... : {str(e)}")
+        return None
 
 # --- 4. Main App Flow ---
 if login():
@@ -96,7 +100,6 @@ if login():
     elif app_mode == "🔍 CS Search": target_id, header_text = CASE_SHEET_LIST, "CS INTELLIGENCE"
     else: target_id, header_text = REFUND_SHEET_ID, "REFUND TRACKER"
 
-    # ✅ แก้ไข Syntax Error (ใส่เครื่องหมายคำพูดให้ถูกต้อง)
     st.markdown(f"<h1 class='main-header'>{header_text}</h1>", unsafe_allow_html=True)
 
     master_data = {}
@@ -116,7 +119,6 @@ if login():
         found = False
         for disp, info in master_data.items():
             df = info["data"]
-            # 💡 สำหรับ FAQ: ถ้าไม่ค้นหาให้โชว์ทั้งหมด ถ้าค้นหาให้กรองข้อมูล
             if app_mode == "📋 FAQ":
                 if search_val:
                     query = search_val.strip().lower()
