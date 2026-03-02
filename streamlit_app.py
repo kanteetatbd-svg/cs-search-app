@@ -115,7 +115,7 @@ if mode == "📋 ประวัติการแก้ไข":
     st.markdown("<h1 class='main-header'>AUDIT LOGS</h1>", unsafe_allow_html=True)
     st.markdown("ตรวจสอบประวัติการแก้ไขข้อมูลทั้งหมดโดยไม่ต้องเปิด Google Sheets")
     
-    if AUDIT_LOG_ID == 'เอา_ID_ไฟล์สมุดพกมาใส่ตรงนี้' or not AUDIT_LOG_ID:
+    if AUDIT_LOG_ID == '1MfPPlI9T5FQV8od2pIyIvGmBG1-ScvpUM__d5SCkQU8' or not AUDIT_LOG_ID:
         st.warning("⚠️ โปรดใส่ ID ไฟล์ Google Sheets สำหรับเก็บประวัติ (AUDIT_LOG_ID) ในโค้ดบรรทัดที่ 46 ก่อนครับ")
     else:
         with st.spinner("กำลังดึงประวัติการแก้ไข..."):
