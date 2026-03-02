@@ -137,11 +137,11 @@ with st.sidebar:
 # แยกโหลด CS (โหลดทุกแท็บ) และ Refund (โหลดเฉพาะแท็บที่กำหนด)
 for s_id in CASE_IDS:
     if s_id not in st.session_state.loaded_sheets:
-        with st.spinner('กำลังดึงข้อมูล CS เข้าฐานข้อมูลความเร็วสูง... ⚡'):
+        with st.spinner('กำลังดึงข้อมูล... ⚡'):
             st.session_state.loaded_sheets[s_id] = load_data(s_id)
             
 if REFUND_ID not in st.session_state.loaded_sheets:
-    with st.spinner('กำลังโหลดข้อมูล Refund (เฉพาะแท็บหลัก)... 🚀'):
+    with st.spinner('กำลังโหลดข้อมูล Refund... 🚀'):
         # 🚀 ส่งรายชื่อแท็บไปให้ฟังก์ชัน เพื่อบล็อกไม่ให้โหลดแท็บอื่น
         st.session_state.loaded_sheets[REFUND_ID] = load_data(REFUND_ID, target_tabs=ALLOWED_REFUND_TABS)
 
@@ -179,9 +179,9 @@ else:
                 master[f"{tab} ({s_id[-4:]})" if len(target_ids) > 1 else tab] = {"df": df, "id": s_id, "tab": tab}
 
     if master:
-        st.markdown('<div class="status-bar-ready">✅ ระบบพร้อมใช้งาน! ค้นหาไวปานสายฟ้า</div>', unsafe_allow_html=True)
+        st.markdown('<div class="status-bar-ready">✅ ระบบพร้อมใช้งาน!</div>', unsafe_allow_html=True)
         
-        q_raw = st_keyup("", placeholder=f"⚡ พิมพ์ Keyword ค้นหา..", label_visibility="collapsed", key=f"search_{mode}", debounce=300)
+        q_raw = st_keyup("", placeholder=f"⚡ ค้นหาที่นี่..", label_visibility="collapsed", key=f"search_{mode}", debounce=300)
         q = str(q_raw).strip().lower() if q_raw else ""
         
         if q:
