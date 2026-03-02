@@ -3,6 +3,8 @@ import pandas as pd
 import gspread
 import time  
 import duckdb  
+import io
+import google.auth.transport.requests
 from st_keyup import st_keyup  
 from google.oauth2.service_account import Credentials
 
@@ -25,7 +27,14 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # --- 3. LOGIN LOGIC ---
-USER_DB = {"test123": "123456", "admin": "123456"}
+USER_DB = {
+    "test123": "123456", 
+    "admin": "123456",
+    "leader01": "123456", 
+    "cs_staff": "123456"  
+}
+
+ADMIN_USERS = ["admin", "test123", "leader01"]
 
 if not st.session_state.logged_in:
     st.markdown("<h1 style='text-align: center; color: white; padding-top: 100px;'>⚡ CS INTELLIGENCE</h1>", unsafe_allow_html=True)
@@ -45,67 +54,53 @@ CASE_IDS = [id.strip() for id in ['1x1VKAo6pRU7dtjgliSyR-aX3ZQaGeMW9PdFb2HosGbo'
 REFUND_ID = '1auT1zB7y9LLJ6EgIaJTjmOPQA2_HZaxhWk2qM-WZzrA'.strip()
 AUDIT_LOG_ID = '1MfPPlI9T5FQV8od2pIyIvGmBG1-ScvpUM__d5SCkQU8'.strip() 
 
-# 🚀 1. รายชื่อแท็บ CS ที่ต้องการโหลด (ถ้าระบุตรงนี้ได้ จะเร็วขึ้นมาก! ถ้าปล่อยว่าง [] มันจะโหลดทุกแท็บ)
-ALLOWED_CS_TABS = [
-    # "ชื่อแท็บ CS ที่ 1", 
-    # "ชื่อแท็บ CS ที่ 2",
-]
-
-# 🚀 2. รายชื่อแท็บ Refund ที่ต้องการโหลด
-ALLOWED_REFUND_TABS = [
-    "ค้นหา Refuned GG ที่ไม่ได้อยู่ในไฟล์2026 (หลัก)", 
-    "RefundGG2026", 
-    "ค้นหา Refuned GG 2025", 
-    "เช็คRefundGG2025", 
-    "เช็คRefundGGที่ไม่ได้อยู่ในไฟล์2025"
-]
+ALLOWED_CS_TABS = []
+ALLOWED_REFUND_TABS = []
 
 @st.cache_data(ttl=3600)
 def load_data(sheet_id, target_tabs=None):
     try:
         creds = Credentials.from_service_account_file('key.json', scopes=['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive'])
-        gc = gspread.authorize(creds)
-        sh = gc.open_by_key(sheet_id)
+        authed_session = google.auth.transport.requests.AuthorizedSession(creds)
+        
+        # 🚀 ท่าไม้ตาย: สั่งโหลดไฟล์ทั้งหมดออกมาเป็น Excel ก้อนเดียว (1 Request จบ!)
+        url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=xlsx"
+        
+        for attempt in range(3):
+            try:
+                response = authed_session.get(url, timeout=30)
+                if response.status_code == 200: break
+                time.sleep(5)
+            except:
+                if attempt == 2: raise
+                
+        # 🚀 ดึงทุกแท็บจาก Excel เข้ามาใน Pandas ทันที (ไม่ต้องมี time.sleep แล้ว)
+        all_sheets = pd.read_excel(io.BytesIO(response.content), sheet_name=None, header=None, dtype=str)
         
         tabs = {}
-        for ws in sh.worksheets():
-            ws_title = ws.title.strip()
+        for ws_title, df in all_sheets.items():
+            df = df.fillna("") # จัดการช่องว่าง
             
-            # 🚀 ระบบข้ามแท็บ: ถ้ามีรายชื่อแท็บเป้าหมาย แล้วแท็บนี้ไม่อยู่ในรายชื่อ ให้ข้ามไปเลย!
+            # ระบบข้ามแท็บ
             if target_tabs and len(target_tabs) > 0 and ws_title not in target_tabs:
                 continue
                 
-            # 🚀 ใช้ท่ามาตรฐาน get_all_values() ที่เสถียรที่สุด 100% ไม่มีพัง
-            max_retries = 3
-            data = None
-            for attempt in range(max_retries):
-                try:
-                    data = ws.get_all_values()
-                    break 
-                except Exception as e:
-                    if "429" in str(e): 
-                        time.sleep(10)  
-                    else:
-                        raise e 
-            
-            if not data: continue
-            
-            df = pd.DataFrame(data)
+            # ถ้าเป็นแท็บเปล่าๆ ให้ข้ามไปเลย จะได้ไม่เออเร่อ
+            if df.empty or df.replace("", pd.NA).dropna(how='all').empty:
+                continue
+                
             try:
                 h_idx = next((i for i, row in df.iterrows() if sum(1 for v in row if str(v).strip()) > 5), 0)
-                df.columns = [h.strip() if h.strip() else f"Col_{i+1}" for i, h in enumerate(df.iloc[h_idx])]
+                df.columns = [str(h).strip() if str(h).strip() else f"Col_{i+1}" for i, h in enumerate(df.iloc[h_idx])]
                 df['sheet_row'] = df.index + 1
                 df['search_index'] = df.astype(str).agg(' '.join, axis=1).str.lower()
                 tabs[ws_title] = df.iloc[h_idx+1:].reset_index(drop=True)
             except:
                 continue
                 
-            # พัก 1.5 วินาที กัน Google แบน
-            time.sleep(1.5)
-            
         return tabs
     except Exception as e:
-        st.sidebar.error(f"❌ โหลดไฟล์พัง: {str(e)}")
+        st.sidebar.error(f"❌ โหลดไฟล์พัง (ลืมใส่ openpyxl ใน requirements.txt หรือเปล่าครับ?): {str(e)}")
         return None
 
 # --- 5. SIDEBAR ---
@@ -114,7 +109,11 @@ with st.sidebar:
     st.markdown(f"<h3 style='text-align: center; color: white;'>คุณ {st.session_state.user}</h3>", unsafe_allow_html=True)
     st.divider()
     
-    mode = st.radio("เลือกฟังก์ชัน:", ["🔍 CS Search", "💰 Refund Search", "📋 ประวัติการแก้ไข"])
+    menu_options = ["🔍 CS Search", "💰 Refund Search"]
+    if st.session_state.user in ADMIN_USERS:
+        menu_options.append("📋 ประวัติการแก้ไข")
+        
+    mode = st.radio("เลือกฟังก์ชัน:", menu_options)
     
     if st.button("🔄 SYNC DATA", use_container_width=True): 
         st.cache_data.clear()
@@ -125,7 +124,7 @@ with st.sidebar:
         st.session_state.logged_in = False
         st.rerun()
 
-# --- 6. MAIN SYSTEM (Lazy Load โหลดเฉพาะหน้าที่เปิด) ---
+# --- 6. MAIN SYSTEM ---
 if mode == "📋 ประวัติการแก้ไข":
     st.markdown("<h1 class='main-header'>AUDIT LOGS</h1>", unsafe_allow_html=True)
     st.markdown("ตรวจสอบประวัติการแก้ไขข้อมูลทั้งหมดโดยไม่ต้องเปิด Google Sheets")
@@ -148,7 +147,6 @@ if mode == "📋 ประวัติการแก้ไข":
                 st.error(f"❌ ดึงข้อมูลประวัติพัง: {e}")
 
 else:
-    # 🚀 ตั้งค่าเป้าหมายการโหลดตามเมนูที่กด
     if mode == "🔍 CS Search":
         target_ids = CASE_IDS
         target_tabs = ALLOWED_CS_TABS
@@ -159,11 +157,9 @@ else:
     st.markdown(f"<h1 class='main-header'>{mode.split(' ')[1]} SYSTEM</h1>", unsafe_allow_html=True)
 
     master = {}
-    
-    # 🚀 โหลดข้อมูลเฉพาะ ID ที่เกี่ยวข้องกับหน้านี้เท่านั้น
     for s_id in target_ids:
         if s_id not in st.session_state.loaded_sheets:
-            with st.spinner(f'กำลังโหลดข้อมูล... ⚡'):
+            with st.spinner(f'กำลังโหลดข้อมูลแบบ Ultra Fast (Excel Mode)... 🚀'):
                 st.session_state.loaded_sheets[s_id] = load_data(s_id, target_tabs=target_tabs)
 
         res = st.session_state.loaded_sheets.get(s_id)
@@ -172,7 +168,7 @@ else:
                 master[f"{tab} ({s_id[-4:]})" if len(target_ids) > 1 else tab] = {"df": df, "id": s_id, "tab": tab}
 
     if master:
-        st.markdown('<div class="status-bar-ready">✅ ระบบพร้อมใช้งาน!</div>', unsafe_allow_html=True)
+        st.markdown('<div class="status-bar-ready">✅ ระบบพร้อมใช้งาน! ดึงข้อมูลไวสุดๆ ⚡</div>', unsafe_allow_html=True)
         
         q_raw = st_keyup("", placeholder=f"⚡ ค้นหาที่นี่..", label_visibility="collapsed", key=f"search_{mode}", debounce=300)
         q = str(q_raw).strip().lower() if q_raw else ""
