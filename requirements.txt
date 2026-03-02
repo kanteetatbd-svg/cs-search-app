@@ -1,8 +1,5 @@
 streamlit
 pandas
-google-cloud-bigquery
-google-auth
-pandas-gbq
 gspread
-google-auth-oauthlib
-streamlit-google-auth
+google-auth
+streamlit-keyup
