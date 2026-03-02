@@ -137,11 +137,24 @@ else:
     target_ids = CASE_IDS if mode == "🔍 CS Search" else [REFUND_ID]
     st.markdown(f"<h1 class='main-header'>{mode.split(' ')[1]} SYSTEM</h1>", unsafe_allow_html=True)
 
+    # 🚀 รายชื่อ 5 แท็บที่อนุญาตให้ค้นหาในโหมด Refund Search
+    allowed_refund_tabs = [
+        "ค้นหา Refuned GG ที่ไม่ได้อยู่ในไฟล์2026 (หลัก)", 
+        "RefundGG2026", 
+        "ค้นหา Refuned GG 2025", 
+        "เช็คRefundGG2025", 
+        "เช็คRefundGGที่ไม่ได้อยู่ในไฟล์2025"
+    ]
+
     master = {}
     for s_id in target_ids:
         res = st.session_state.loaded_sheets.get(s_id)
         if res:
             for tab, df in res.items():
+                # 🚀 กรองข้อมูล: ถ้าเป็นหมวด Refund ให้เอามาเฉพาะแท็บที่กำหนด
+                if mode == "💰 Refund Search" and tab.strip() not in allowed_refund_tabs:
+                    continue
+                    
                 master[f"{tab} ({s_id[-4:]})" if len(target_ids) > 1 else tab] = {"df": df, "id": s_id, "tab": tab}
 
     if master:
@@ -166,8 +179,13 @@ else:
                     res_df = pd.DataFrame() 
                 
                 if not res_df.empty:
+                    # 🚀 ระบบคัดกรองข้อมูลซ้ำซ้อน (Deduplicate)
+                    check_cols = [c for c in res_df.columns if c not in ['sheet_row', 'search_index']]
+                    if check_cols:
+                        res_df = res_df.drop_duplicates(subset=check_cols)
+
                     found_any = True
-                    st.markdown(f"<div style='border-left: 5px solid #10b981; padding-left: 15px; margin: 20px 0;'>📁 หมวดหมู่: <b>{name}</b> (เจอ {len(res_df)} รายการ)</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='border-left: 5px solid #10b981; padding-left: 15px; margin: 20px 0;'>📁 หมวดหมู่: <b>{name}</b> (เจอ {len(res_df)} รายการที่ไม่ซ้ำ)</div>", unsafe_allow_html=True)
                     
                     display_df = res_df.drop(columns=['search_index'])
                     
