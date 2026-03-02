@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
 import gspread
+import time  # 👈 เพิ่มระบบหน่วงเวลา
+from st_keyup import st_keyup  # 👈 เพิ่มระบบค้นหา Real-time
 from google.oauth2.service_account import Credentials
 
 # --- 1. INITIALIZE SESSION (ป้องกัน Error ตอนยังไม่ Login) ---
@@ -50,11 +52,14 @@ def load_data(sheet_id):
             data = ws.get_all_values()
             if not data: continue
             df = pd.DataFrame(data)
-            # กลับมาใช้สูตรหา Header > 5 ช่อง เพื่อความแม่นยำกับไฟล์เคสใหญ่ๆ
             h_idx = next((i for i, row in df.iterrows() if sum(1 for v in row if str(v).strip()) > 5), 0)
             df.columns = [h.strip() if h.strip() else f"Col_{i+1}" for i, h in enumerate(df.iloc[h_idx])]
             df['sheet_row'] = df.index + 1
             tabs[ws.title] = df.iloc[h_idx+1:].reset_index(drop=True)
+            
+            # 🛑 ระบบหน่วงเวลา 1.5 วินาที กัน Google บล็อก Quota Exceeded
+            time.sleep(1.5)
+            
         return tabs
     except Exception as e:
         st.sidebar.error(f"❌ โหลดไฟล์ {sheet_id[:5]}... พัง: {str(e)}")
@@ -75,23 +80,24 @@ st.markdown(f"<h1 class='main-header'>{mode.split(' ')[1]} SYSTEM</h1>", unsafe_
 
 master = {}
 ids = target if isinstance(target, list) else [target]
-with st.spinner('กำลังเชื่อมต่อฐานข้อมูล...'):
+with st.spinner('กำลังเชื่อมต่อฐานข้อมูล... (อาจใช้เวลาเล็กน้อยเพื่อป้องกันระบบถูกบล็อก)'):
     for s_id in ids:
         res = load_data(s_id)
         if res:
             for tab, df in res.items():
-                # ห้อยท้ายปีให้รู้ว่าไฟล์ไหนเป็นของปีไหน
                 master[f"{tab} ({s_id[-4:]})" if len(ids) > 1 else tab] = {"df": df, "id": s_id, "tab": tab}
 
 if master:
     st.markdown('<div class="status-bar-ready">✅ พร้อมใช้งาน</div>', unsafe_allow_html=True)
-    q = st.text_input("", placeholder=f"🔍 ค้นหาใน {mode}...", label_visibility="collapsed").strip().lower()
+    
+    # ⚡ เปลี่ยนมาใช้ st_keyup สำหรับระบบ "พิมพ์ปุ๊บเจอปั๊บ"
+    q_raw = st_keyup("", placeholder=f"⚡ พิมพ์ค้นหาปุ๊บ เจอปั๊บใน {mode}...", label_visibility="collapsed", key=f"search_{mode}")
+    q = str(q_raw).strip().lower() if q_raw else ""
     
     if q:
         found_any = False
         for name, info in master.items():
             df = info["df"]
-            # ค้นหาทุกคอลัมน์
             mask = df.drop(columns=['sheet_row']).astype(str).apply(lambda r: r.str.lower().str.contains(q).any(), axis=1)
             res_df = df[mask]
             
