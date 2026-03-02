@@ -140,7 +140,7 @@ if login():
 
     # ตั้งค่าหัวข้อและไฟล์เป้าหมาย
     if app_mode == "📋 FAQ":
-        target_id, header_text = FAQ_SHEET_ID, "FAQ DATABASE"
+        target_id, header_text = FAQ_SHEET_ID, "FAQ"
     elif app_mode == "🔍 CS Search":
         target_id, header_text = CASE_SHEET_LIST, "CS INTELLIGENCE"
     else:
