@@ -3,7 +3,7 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 
-# --- 1. การตั้งค่าหน้าจอและ CSS Premium ---
+# --- 1. การตั้งค่าหน้าจอและ CSS Premium (คงเดิมไว้ 100%) ---
 st.set_page_config(page_title="CS Smart Intelligence", page_icon="💎", layout="wide")
 
 st.markdown("""
@@ -53,7 +53,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. ระบบ Login ---
+# --- 2. ระบบ Login (คงเดิม) ---
 USER_DB = {
     "test123": {"password": "123456", "default_pic": "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"},
     "admin": {"password": "123456", "default_pic": "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"}
@@ -80,8 +80,8 @@ def login():
         return False
     return True
 
-# --- 3. [CONFIG] ID ไฟล์ Google Sheets ---
-FAQ_SHEET_ID = '1DkCgWps-wR4kaqMQp9eATV2S0uCf8nTe' # ตรวจสอบ ID นี้อีกครั้งหากหน้า FAQ ไม่ขึ้น
+# --- 3. [CONFIG] ID ไฟล์ Google Sheets (คงเดิม) ---
+FAQ_SHEET_ID = '1DkCgWps-wR4kaqMQp9eATV2S0uCf8nTe' 
 CASE_SHEET_LIST = [
     '1x1VKAo6pRU7dtjgliSyR-aX3ZQaGeMW9PdFb2HosGbo', # ปี 2025
     '1TRTLSmr4Zh9t0aXpVg5IpiYxEAIIKy1PSCEHHIiqNdY'  # ปี 2026
@@ -106,7 +106,7 @@ def load_data_from_file(sheet_id):
             header_idx = 0
             for i in range(min(15, len(df))):
                 active_cells = sum(1 for val in df.iloc[i] if str(val).strip() != "")
-                if active_cells > 5: # สูตร Smart Header ค้นหาหัวตาราง
+                if active_cells > 5:
                     header_idx = i
                     break
             headers = df.iloc[header_idx].astype(str).tolist()
@@ -146,9 +146,9 @@ if login():
     else:
         target_id, header_text = REFUND_SHEET_ID, "REFUND TRACKER"
 
-    st.markdown(f"<h1 class='main-header'>{header_text}</h1>", unsafe_allow_html=True) # แก้ไข Syntax Error แล้ว
+    st.markdown(f"<h1 class='main-header'>{header_text}</h1>", unsafe_allow_html=True)
 
-    # โหลดข้อมูล (รองรับทั้งไฟล์เดียวและหลายไฟล์)
+    # โหลดข้อมูล
     master_data = {}
     with st.spinner('กำลังเชื่อมต่อฐานข้อมูล...'):
         ids = target_id if isinstance(target_id, list) else [target_id]
@@ -156,38 +156,61 @@ if login():
             file_data = load_data_from_file(s_id)
             if file_data:
                 for tab, df in file_data.items():
-                    # แยกชื่อแท็บเพื่อให้รู้ว่ามาจากปีไหน
                     display_name = f"{tab} ({s_id[-4:]})" if len(ids) > 1 else tab
                     master_data[display_name] = {"data": df, "file_id": s_id, "tab_real_name": tab}
 
     if master_data:
         st.markdown('<div class="status-bar-ready">✅ พร้อมใช้งาน</div>', unsafe_allow_html=True)
-        search_val = st.text_input("", placeholder=f" {app_mode}...", label_visibility="collapsed")
+        
+        # ช่องค้นหา (Search input)
+        search_val = st.text_input("", placeholder=f"🔍 ค้นหาใน {app_mode}...", label_visibility="collapsed")
 
-        if search_val:
-            query = search_val.strip().lower()
-            found = False
-            for disp, info in master_data.items():
-                df = info["data"]
-                mask = df.drop(columns=['sheet_row']).astype(str).apply(lambda r: r.str.lower().str.contains(query).any(), axis=1)
-                res = df[mask]
-                if not res.empty:
-                    found = True
-                    st.markdown(f"<div style='background: rgba(59,130,246,0.1); padding: 15px; border-radius: 12px; border-left: 6px solid #3b82f6; margin: 20px 0;'>📁 หมวดหมู่: <b>{disp}</b></div>", unsafe_allow_html=True)
-                    if app_mode != "📋 FAQ":
-                        # ส่วนที่แก้ไขข้อมูลได้
-                        edit_cfg = {"sheet_row": None, "การแบน": st.column_config.SelectboxColumn("การแบน", options=["ปลด", "แบน", "รอตรวจสอบ"]), "สถานะ": st.column_config.SelectboxColumn("สถานะ", options=["ปกติ", "ไม่ปกติ", "รอดำเนินการ"])}
-                        updated = st.data_editor(res, use_container_width=True, hide_index=True, column_config=edit_cfg, key=f"ed_{disp}_{search_val}")
-                        if st.button(f"💾 บันทึกใน {disp}", key=f"btn_{disp}"):
-                            try:
-                                gc = get_sheets_client()
-                                ws = gc.open_by_key(info["file_id"]).worksheet(info["tab_real_name"])
-                                for _, r in updated.iterrows():
-                                    ws.update(f"A{int(r['sheet_row'])}", [r.drop('sheet_row').astype(str).tolist()])
-                                st.toast("✅ บันทึกสำเร็จ!")
-                                st.cache_data.clear()
-                            except Exception as e: st.error(f"❌ พลาด: {e}")
-                    else:
-                        st.dataframe(res.drop(columns=['sheet_row']), use_container_width=True, hide_index=True)
-            if not found: st.warning(f"❌ ไม่พบข้อมูลสำหรับ: {search_val}")
-    else: st.info("📡 ตรวจสอบ ID ไฟล์และการแชร์สิทธิ์ให้ Service Account")
+        found = False
+        for disp, info in master_data.items():
+            df = info["data"]
+            
+            # --- 💡 ปรับปรุงตรรกะหน้า FAQ ให้แสดงผลทันที ---
+            if app_mode == "📋 FAQ":
+                if search_val:
+                    query = search_val.strip().lower()
+                    mask = df.drop(columns=['sheet_row']).astype(str).apply(lambda r: r.str.lower().str.contains(query).any(), axis=1)
+                    res = df[mask]
+                else:
+                    res = df # แสดงทั้งหมดถ้าไม่มีการพิมพ์ค้นหา
+            else:
+                # สำหรับหน้า Search และ Refund ต้องพิมพ์ก่อนถึงจะแสดงผล (เพื่อความเร็ว)
+                if search_val:
+                    query = search_val.strip().lower()
+                    mask = df.drop(columns=['sheet_row']).astype(str).apply(lambda r: r.str.lower().str.contains(query).any(), axis=1)
+                    res = df[mask]
+                else:
+                    res = pd.DataFrame()
+
+            # แสดงตารางผลลัพธ์
+            if not res.empty:
+                found = True
+                st.markdown(f"<div style='background: rgba(59,130,246,0.1); padding: 15px; border-radius: 12px; border-left: 6px solid #3b82f6; margin: 20px 0;'>📁 หมวดหมู่: <b>{disp}</b></div>", unsafe_allow_html=True)
+                
+                if app_mode != "📋 FAQ":
+                    # ส่วนแก้ไขข้อมูล (Data Editor)
+                    edit_cfg = {"sheet_row": None, "การแบน": st.column_config.SelectboxColumn("การแบน", options=["ปลด", "แบน", "รอตรวจสอบ"]), "สถานะ": st.column_config.SelectboxColumn("สถานะ", options=["ปกติ", "ไม่ปกติ", "รอดำเนินการ"])}
+                    updated = st.data_editor(res, use_container_width=True, hide_index=True, column_config=edit_cfg, key=f"ed_{disp}_{search_val}")
+                    
+                    if st.button(f"💾 บันทึกใน {disp}", key=f"btn_{disp}"):
+                        try:
+                            gc = get_sheets_client()
+                            ws = gc.open_by_key(info["file_id"]).worksheet(info["tab_real_name"])
+                            for _, r in updated.iterrows():
+                                ws.update(f"A{int(r['sheet_row'])}", [r.drop('sheet_row').astype(str).tolist()])
+                            st.toast("✅ บันทึกสำเร็จ!")
+                            st.cache_data.clear()
+                        except Exception as e: 
+                            st.error(f"❌ พลาด: {e}")
+                else:
+                    # หน้า FAQ แสดงผลอย่างเดียวแบบ Read-only
+                    st.dataframe(res.drop(columns=['sheet_row']), use_container_width=True, hide_index=True)
+        
+        if search_val and not found:
+            st.warning(f"❌ ไม่พบข้อมูลสำหรับ: {search_val}")
+    else: 
+        st.info("📡 ตรวจสอบ ID ไฟล์และการแชร์สิทธิ์ให้ Service Account")
