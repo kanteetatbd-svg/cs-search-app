@@ -5,9 +5,10 @@ import time
 from st_keyup import st_keyup  
 from google.oauth2.service_account import Credentials
 
-# --- 1. INITIALIZE SESSION (ป้องกัน Error ตอนยังไม่ Login) ---
+# --- 1. INITIALIZE SESSION (เพิ่มระบบจำข้อมูลฝังใจ) ---
 if "logged_in" not in st.session_state: st.session_state.logged_in = False
 if "user" not in st.session_state: st.session_state.user = "Guest"
+if "loaded_sheets" not in st.session_state: st.session_state.loaded_sheets = {} # 👈 ตัวจำข้อมูลใหม่
 
 # --- 2. PREMIUM CSS ---
 st.set_page_config(page_title="CS Smart Intelligence", page_icon="💎", layout="wide")
@@ -38,7 +39,7 @@ if not st.session_state.logged_in:
                 else: st.error("❌ ข้อมูลไม่ถูกต้อง")
     st.stop() 
 
-# --- 4. DATA ENGINE (เหลือแค่ CS Search & Refund) ---
+# --- 4. DATA ENGINE ---
 CASE_IDS = [id.strip() for id in ['1x1VKAo6pRU7dtjgliSyR-aX3ZQaGeMW9PdFb2HosGbo', '1TRTLSmr4Zh9t0aXpVg5IpiYxEAIIKy1PSCEHHIiqNdY']]
 REFUND_ID = '1auT1zB7y9LLJ6EgIaJTjmOPQA2_HZaxhWk2qM-WZzrA'.strip()
 
@@ -50,14 +51,8 @@ def load_data(sheet_id):
         tabs = {}
         for ws in sh.worksheets():
             data = ws.get_all_values()
-            
-            # ถ้าแท็บว่าง ให้ข้ามไปเลยไม่ต้องเสียเวลาพัก
-            if not data: 
-                continue
-                
+            if not data: continue
             df = pd.DataFrame(data)
-            
-            # กันเหนียว: ถ้าจัดเรียงหัวตารางพัง ให้ข้ามแท็บนั้นไปเลย
             try:
                 h_idx = next((i for i, row in df.iterrows() if sum(1 for v in row if str(v).strip()) > 5), 0)
                 df.columns = [h.strip() if h.strip() else f"Col_{i+1}" for i, h in enumerate(df.iloc[h_idx])]
@@ -65,10 +60,7 @@ def load_data(sheet_id):
                 tabs[ws.title] = df.iloc[h_idx+1:].reset_index(drop=True)
             except:
                 continue
-            
-            # 🚀 หน่วงเวลาแค่ 0.4 วิ เพื่อให้โหลดเร็วขึ้นแต่ Google ไม่บล็อก
             time.sleep(0.4)
-            
         return tabs
     except Exception as e:
         st.sidebar.error(f"❌ โหลดไฟล์ {sheet_id[:5]}... พัง: {str(e)}")
@@ -80,8 +72,16 @@ with st.sidebar:
     st.markdown(f"<h3 style='text-align: center; color: white;'>คุณ {st.session_state.user}</h3>", unsafe_allow_html=True)
     st.divider()
     mode = st.radio("เลือกฟังก์ชัน:", ["🔍 CS Search", "💰 Refund Search"])
-    if st.button("🔄 SYNC DATA", use_container_width=True): st.cache_data.clear(); st.rerun()
-    if st.button("🚪 LOGOUT", use_container_width=True): st.session_state.logged_in = False; st.rerun()
+    
+    # 🔄 ปุ่ม SYNC ต้องล้างความจำทั้งหมดทิ้งด้วย
+    if st.button("🔄 SYNC DATA", use_container_width=True): 
+        st.cache_data.clear()
+        st.session_state.loaded_sheets = {} # เคลียร์ความจำที่ฝังไว้
+        st.rerun()
+        
+    if st.button("🚪 LOGOUT", use_container_width=True): 
+        st.session_state.logged_in = False
+        st.rerun()
 
 # --- 6. MAIN SYSTEM ---
 target = CASE_IDS if mode == "🔍 CS Search" else REFUND_ID
@@ -89,18 +89,24 @@ st.markdown(f"<h1 class='main-header'>{mode.split(' ')[1]} SYSTEM</h1>", unsafe_
 
 master = {}
 ids = target if isinstance(target, list) else [target]
-with st.spinner('กำลังเชื่อมต่อฐานข้อมูล... (อาจใช้เวลาเล็กน้อยในการดึงข้อมูลครั้งแรก)'):
-    for s_id in ids:
-        res = load_data(s_id)
-        if res:
-            for tab, df in res.items():
-                master[f"{tab} ({s_id[-4:]})" if len(ids) > 1 else tab] = {"df": df, "id": s_id, "tab": tab}
+
+# 🚀 ระบบโหลดข้อมูลแบบใหม่ (ข้ามการโหลดถ้ามีข้อมูลในความจำแล้ว)
+for s_id in ids:
+    # เช็กว่าไฟล์นี้เคยดึงมาแล้วหรือยัง? ถ้ายังไม่เคย ถึงจะโชว์ตัวโหลดหมุนๆ
+    if s_id not in st.session_state.loaded_sheets:
+        with st.spinner('กำลังเชื่อมต่อฐานข้อมูล... (โหลดครั้งแรก)'):
+            st.session_state.loaded_sheets[s_id] = load_data(s_id)
+            
+    # ดึงข้อมูลจากความจำมาใช้เลย (สลับหน้าแล้วข้อมูลเด้งขึ้นมาทันที)
+    res = st.session_state.loaded_sheets[s_id]
+    if res:
+        for tab, df in res.items():
+            master[f"{tab} ({s_id[-4:]})" if len(ids) > 1 else tab] = {"df": df, "id": s_id, "tab": tab}
 
 if master:
     st.markdown('<div class="status-bar-ready">✅ พร้อมใช้งาน</div>', unsafe_allow_html=True)
     
-    # ⚡ ระบบพิมพ์ปุ๊บ เจอปั๊บ
-    q_raw = st_keyup("", placeholder=f"{mode}...", label_visibility="collapsed", key=f"search_{mode}")
+    q_raw = st_keyup("", placeholder=f"⚡ พิมพ์ค้นหาปุ๊บ เจอปั๊บใน {mode}...", label_visibility="collapsed", key=f"search_{mode}")
     q = str(q_raw).strip().lower() if q_raw else ""
     
     if q:
