@@ -130,8 +130,8 @@ if login():
             st.image(st.session_state.user_pic, use_container_width=True)
         st.markdown(f"<h3 style='text-align: center; color: white;'>คุณ {st.session_state.username}</h3>", unsafe_allow_html=True)
         st.divider()
-        app_mode = st.radio("เลือกฟังก์ชัน:", ["📋 FAQ", "🔍 CS Smart Search", "💰 Refund Search"])
-        if st.button("🔄 FORCE SYNC", use_container_width=True):
+        app_mode = st.radio("เลือกฟังก์ชัน:", ["📋 FAQ", "🔍 CS Search", "💰 Refund Search"])
+        if st.button("🔄 SYNC DATA", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
         if st.button("🚪 LOGOUT", use_container_width=True):
@@ -141,7 +141,7 @@ if login():
     # ตั้งค่าหัวข้อและไฟล์เป้าหมาย
     if app_mode == "📋 FAQ":
         target_id, header_text = FAQ_SHEET_ID, "FAQ DATABASE"
-    elif app_mode == "🔍 CS Smart Search":
+    elif app_mode == "🔍 CS Search":
         target_id, header_text = CASE_SHEET_LIST, "CS INTELLIGENCE"
     else:
         target_id, header_text = REFUND_SHEET_ID, "REFUND TRACKER"
@@ -162,7 +162,7 @@ if login():
 
     if master_data:
         st.markdown('<div class="status-bar-ready">✅ พร้อมใช้งาน</div>', unsafe_allow_html=True)
-        search_val = st.text_input("", placeholder=f"🔍 ค้นหาใน {app_mode}...", label_visibility="collapsed")
+        search_val = st.text_input("", placeholder=f" {app_mode}...", label_visibility="collapsed")
 
         if search_val:
             query = search_val.strip().lower()
