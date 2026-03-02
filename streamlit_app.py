@@ -51,8 +51,21 @@ def load_data(sheet_id):
         sh = gc.open_by_key(sheet_id)
         tabs = {}
         for ws in sh.worksheets():
-            data = ws.get_all_values()
+            # 🚀 ระบบตื๊อ (Auto-Retry): พยายามดึงข้อมูล 3 รอบ ถ้าโดนแบนให้รอ 10 วิ
+            max_retries = 3
+            data = None
+            for attempt in range(max_retries):
+                try:
+                    data = ws.get_all_values()
+                    break # ถ้าดึงสำเร็จปุ๊บ ให้ทะลุลูปออกไปทำอย่างอื่นต่อเลย
+                except Exception as e:
+                    if "429" in str(e): # ถ้าโดน Google สกัดดาวรุ่ง
+                        time.sleep(10)  # แกล้งตาย 10 วินาทีให้ Google ใจเย็นลง
+                    else:
+                        raise e # ถ้าพังเพราะอย่างอื่นที่ไม่ใช่ 429 ให้ข้ามไปเลย
+            
             if not data: continue
+            
             df = pd.DataFrame(data)
             try:
                 h_idx = next((i for i, row in df.iterrows() if sum(1 for v in row if str(v).strip()) > 5), 0)
@@ -65,7 +78,10 @@ def load_data(sheet_id):
                 tabs[ws.title] = df.iloc[h_idx+1:].reset_index(drop=True)
             except:
                 continue
-            time.sleep(0.4)
+                
+            # เบรกมาตรฐาน เพิ่มเป็น 1.5 วิ เพื่อลดความเสี่ยงโดนแบนแต่แรก
+            time.sleep(1.5)
+            
         return tabs
     except Exception as e:
         st.sidebar.error(f"❌ โหลดไฟล์ {sheet_id[:5]}... พัง: {str(e)}")
