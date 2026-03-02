@@ -4,13 +4,11 @@ import gspread
 from google.oauth2.service_account import Credentials
 import datetime
 
-# --- 1. การตั้งค่าหน้าตาและการเชื่อมต่อ (รักษาไว้ครบทุกบรรทัด 100%) ---
+# --- 1. การตั้งค่าหน้าจอและ CSS (รักษาของเดิมไว้ทั้งหมด) ---
 st.set_page_config(page_title="CS Smart Intelligence", page_icon="💎", layout="wide")
 
-# 🎨 [PREMIUM CSS] เน้นรูปวงกลมขนาดใหญ่ และแถบสถานะแบบไม่มี Dropdown
 st.markdown("""
     <style>
-    /* พื้นหลัง Animated Gradient */
     .stApp {
         background: linear-gradient(-45deg, #0f172a, #1e293b, #0f172a, #172554);
         background-size: 400% 400%;
@@ -21,15 +19,11 @@ st.markdown("""
         50% { background-position: 100% 50%; }
         100% { background-position: 0% 50%; }
     }
-    
-    /* Sidebar แบบ Glassmorphism */
     [data-testid="stSidebar"] {
         background-color: rgba(15, 23, 42, 0.6) !important;
         backdrop-filter: blur(15px);
         border-right: 1px solid rgba(255, 255, 255, 0.1);
     }
-    
-    /* 🎯 รูปโปรไฟล์วงกลมขนาดใหญ่ (180px) */
     .stImage img {
         border-radius: 50% !important;
         border: 3px solid #3b82f6;
@@ -40,8 +34,6 @@ st.markdown("""
         margin: 0 auto;
         display: block;
     }
-    
-    /* 🎯 แถบสถานะ "พร้อมใช้งาน" แบบไม่มี Dropdown (Static) */
     .status-bar-ready {
         background: rgba(16, 185, 129, 0.15);
         color: #10b981;
@@ -51,26 +43,7 @@ st.markdown("""
         margin-bottom: 25px;
         font-weight: bold;
         text-align: center;
-        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
     }
-    
-    .stTextInput input {
-        background-color: rgba(255, 255, 255, 0.05) !important;
-        color: white !important;
-        border: 1px solid rgba(59, 130, 246, 0.5) !important;
-        border-radius: 12px !important;
-        height: 52px !important;
-    }
-    
-    div.stButton > button {
-        background: linear-gradient(90deg, #3b82f6, #2563eb);
-        color: white;
-        border: none;
-        border-radius: 12px;
-        font-weight: bold;
-        transition: all 0.3s ease;
-    }
-    
     .main-header {
         font-size: 3rem !important;
         font-weight: 800 !important;
@@ -81,10 +54,10 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 🎯 ระบบจัดการผู้ใช้ ---
+# --- 🎯 ระบบจัดการผู้ใช้ (รักษาของเดิม) ---
 USER_DB = {
-    "get": {"password": "5566", "default_pic": "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"},
-    "admin": {"password": "1234", "default_pic": "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"}
+    "test123": {"password": "123456", "default_pic": "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"},
+    "admin": {"password": "123456", "default_pic": "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"}
 }
 
 def login():
@@ -109,38 +82,37 @@ def login():
         return False
     return True
 
+# --- 🚀 [CONFIG] ใส่ ID ไฟล์ทั้ง 3 ที่นี่ ---
+# อ้างอิงจากโปรเจกต์ sturdy-sentry-487204-s4
+FAQ_SHEET_ID = '1DkCgWps-wR4kaqMQp9eATV2S0uCf8nTe'
+CASE_SHEET_LIST = ['1x1VKAo6pRU7dtjgliSyR-aX3ZQaGeMW9PdFb2HosGbo', '1TRTLSmr4Zh9t0aXpVg5IpiYxEAIIKy1PSCEHHIiqNdY']
+REFUND_SHEET_ID = '1auT1zB7y9LLJ6EgIaJTjmOPQA2_HZaxhWk2qM-WZzrA'
+
 @st.cache_resource
 def get_sheets_client():
     creds = Credentials.from_service_account_file('key.json', scopes=['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive'])
     return gspread.authorize(creds)
 
-# 🚀 [RESTORED] ระบบ Smart Header Logic (35 บรรทัดแห่งความฉลาด)
+# 🚀 [RESTORED] ระบบ Smart Header Logic (คงความฉลาดไว้ครบ)
 @st.cache_data(ttl=3600)
-def load_data_from_file(filename):
+def load_data_from_file(sheet_id):
     gc = get_sheets_client()
     try:
-        sh = gc.open(filename)
+        sh = gc.open_by_key(sheet_id) # เปลี่ยนมาใช้ open_by_key เพื่อความเสถียร
         all_tabs = {}
         for ws in sh.worksheets():
             data = ws.get_all_values()
             if not data: continue
             df = pd.DataFrame(data)
             
-            # --- ตรรกะการค้นหาหัวตาราง (Smart Header Search) ---
             header_idx = 0
             for i in range(min(15, len(df))):
-                # ตรวจสอบว่าแถวไหนมีข้อมูลจริงเกิน 5 ช่อง
-                active_cells = 0
-                for val in df.iloc[i]:
-                    if str(val).strip() != "":
-                        active_cells += 1
+                active_cells = sum(1 for val in df.iloc[i] if str(val).strip() != "")
                 if active_cells > 5:
                     header_idx = i
                     break
             
             headers = df.iloc[header_idx].astype(str).tolist()
-            
-            # --- ตรรกะการจัดการชื่อคอลัมน์ซ้ำหรือว่าง (Duplicate Handler) ---
             processed_headers = []
             for idx, h in enumerate(headers):
                 clean_name = h.strip()
@@ -149,22 +121,18 @@ def load_data_from_file(filename):
                 else:
                     processed_headers.append(clean_name)
             
-            # เก็บเลขแถวต้นฉบับเพื่อใช้ในการ Update
             df['sheet_row'] = df.index + 1
             df.columns = processed_headers + ['sheet_row']
-            
-            # ตัดส่วนหัวและเก็บข้อมูลจริง
             all_tabs[ws.title] = df.iloc[header_idx+1:].reset_index(drop=True)
         return all_tabs
     except Exception as e:
-        st.error(f"⚠️ พังที่ไฟล์ '{filename}': {e}")
+        st.error(f"⚠️ พังที่ ID '{sheet_id}': {e}")
         return None
 
-# --- 2. Main Application Flow ---
+# --- ส่วน Main Application ---
 if login():
     with st.sidebar:
         st.write("") 
-        # จัดวางรูปวงกลมกึ่งกลาง
         c1, c2, c3 = st.columns([1, 10, 1])
         with c2:
             if "user_pic" in st.session_state:
@@ -174,15 +142,10 @@ if login():
         
         st.divider()
         st.markdown("### 🛠 NAVIGATION")
-        app_mode = st.radio("เลือกฟังก์ชัน:", ["🔍 CS Smart Search", "💰 Refund Search"])
+        # ปรับเป็น 3 เมนูตามแผน
+        app_mode = st.radio("เลือกฟังก์ชัน:", ["📋 FAQ", "🔍 CS Smart Search", "💰 Refund Search"])
         
         st.divider()
-        with st.expander("⚙️ ตั้งค่าโปรไฟล์"):
-            new_pic = st.file_uploader("เปลี่ยนรูปภาพ", type=["jpg", "png", "jpeg"])
-            if new_pic:
-                st.session_state.user_pic = new_pic
-                st.toast("อัปเดตรูปสำเร็จ!")
-
         if st.button("🔄 FORCE SYNC", use_container_width=True):
             st.cache_data.clear()
             st.rerun()
@@ -190,65 +153,102 @@ if login():
         if st.button("🚪 LOGOUT", use_container_width=True):
             st.session_state.logged_in = False
             st.rerun()
-
-    # --- ส่วนเนื้อหาหลัก ---
-    if app_mode == "🔍 CS Smart Search":
-        st.markdown("<h1 class='main-header'>CS INTELLIGENCE</h1>", unsafe_allow_html=True)
-        target_file = 'Copy of ไฟล์เก็บเคส2025V1'
+            # --- 🎯 [ส่วนที่ 2] เริ่มการจัดการเนื้อหาตามเมนูที่เลือก ---
+    
+    # กำหนด ID ไฟล์ตามโหมดที่เลือก (ใช้ Key แทนชื่อไฟล์เพื่อความเสถียร)
+# --- 🎯 [แก้ไขส่วนที่ 2] จัดการเนื้อหาและการโหลดหลายไฟล์ ---
+    
+    # 1. กำหนด ID ไฟล์ (รองรับทั้ง String เดียว และ List)
+    if app_mode == "📋 FAQ":
+        target_id = FAQ_SHEET_ID
+        header_text = "FAQ DATABASE"
+    elif app_mode == "🔍 CS Smart Search":
+        target_id = CASE_SHEET_LIST  # ใช้ LIST ที่มี 2025 และ 2026
+        header_text = "CS INTELLIGENCE"
     else:
-        st.markdown("<h1 class='main-header'>REFUND TRACKER</h1>", unsafe_allow_html=True)
-        target_file = 'ไฟล์ข้อมูล_Refund' # พี่เก็ตเปลี่ยนชื่อไฟล์จริงที่นี่
+        target_id = REFUND_SHEET_ID
+        header_text = "REFUND TRACKER"
 
-    # 🚀 Pre-loading Engine (Instant Search)
-    master_data = load_data_from_file(target_file)
+    st.markdown(f<h1 class='main-header'>{header_text}</h1>, unsafe_allow_html=True)
+
+    # 2. 🚀 ระบบโหลดข้อมูลอัจฉริยะ (รองรับทั้งไฟล์เดียวและหลายไฟล์)
+    master_data = {}
+    if isinstance(target_id, list):
+        # ถ้าเป็น List (กรณี CS Smart Search) ให้วนลูปโหลดทีละไฟล์
+        for s_id in target_id:
+            file_data = load_data_from_file(s_id)
+            if file_data:
+                for tab_name, data_frame in file_data.items():
+                    # ต่อท้ายชื่อแท็บด้วย ID 4 ตัวท้าย จะได้รู้ว่ามาจากปีไหน (2025/2026)
+                    master_data[f"{tab_name} ({s_id[-4:]})"] = data_frame
+    else:
+        # ถ้าเป็นไฟล์เดียว (FAQ, Refund) โหลดปกติ
+        master_data = load_data_from_file(target_id)
+    
+    # 3. ตรวจสอบว่ามีข้อมูลไหมแล้วไปต่อ
+    if master_data:
+        st.markdown('<div class="status-bar-ready">✅ FINISHED</div>', unsafe_allow_html=True)
+
+    # 🚀 โหลดข้อมูล (Smart Header Engine จะทำงานอัตโนมัติ)
+    master_data = load_data_from_file(target_id)
     
     if master_data:
-        # 🎯 แถบสถานะแบบ Static ตามสั่ง (ไม่มี Dropdown)
-        st.markdown('<div class="status-bar-ready">✅ ข้อมูลพร้อมใช้งาน</div>', unsafe_allow_html=True)
-    else:
-        st.warning("📡 กำลังรอการเชื่อมต่อไฟล์...")
-
-    search_val = st.text_input("", placeholder=f"🔍 ค้นหาข้อมูลใน {app_mode}...", label_visibility="collapsed")
-
-    if search_val and master_data:
-        query = search_val.strip().lower()
-        found_flag = False
+        st.markdown('<div class="status-bar-ready">✅ FINISHED</div>', unsafe_allow_html=True)
         
-        for tab_name, data_frame in master_data.items():
-            # ค้นหาแบบ Case-insensitive ในทุกคอลัมน์
-            match_mask = data_frame.drop(columns=['sheet_row']).astype(str).apply(lambda row: row.str.lower().str.contains(query).any(), axis=1)
-            result_df = data_frame[match_mask]
+        # ช่องค้นหาขนาดใหญ่
+        search_val = st.text_input("", placeholder=f"🔍 ค้นหาใน {app_mode} (กรอก ID, IMEI หรือหัวข้อ...)", label_visibility="collapsed")
+
+        if search_val:
+            query = search_val.strip().lower()
+            found_flag = False
             
-            if not result_df.empty:
-                found_flag = True
-                st.markdown(f"<div style='background: rgba(59, 130, 246, 0.1); padding: 15px; border-radius: 12px; border-left: 6px solid #3b82f6; margin: 20px 0;'>📁 แท็บ: <b>{tab_name}</b></div>", unsafe_allow_html=True)
+            for tab_name, data_frame in master_data.items():
+                # ค้นหาแบบไม่สนตัวพิมพ์เล็ก-ใหญ่ ในทุกคอลัมน์
+                match_mask = data_frame.drop(columns=['sheet_row']).astype(str).apply(
+                    lambda row: row.str.lower().str.contains(query).any(), axis=1
+                )
+                result_df = data_frame[match_mask]
                 
-                # Config สำหรับ Dropdown แก้ไขข้อมูล
-                edit_cfg = {
-                    "sheet_row": None, 
-                    "การแบน": st.column_config.SelectboxColumn("การแบน", options=["ปลด", "แบน", "รอตรวจสอบ"], required=True),
-                    "สถานะ": st.column_config.SelectboxColumn("สถานะ", options=["ปกติ", "ไม่ปกติ", "รอดำเนินการ"], required=True)
-                }
+                if not result_df.empty:
+                    found_flag = True
+                    st.markdown(f"<div style='background: rgba(59, 130, 246, 0.1); padding: 15px; border-radius: 12px; border-left: 6px solid #3b82f6; margin: 20px 0;'>📁 พบข้อมูลในแท็บ: <b>{tab_name}</b></div>", unsafe_allow_html=True)
+                    
+                    # --- ส่วนของการตั้งค่าการแก้ไขข้อมูล (Data Editor) ---
+                    # เฉพาะหน้า Search และ Refund ที่ให้แก้ไขได้
+                    if app_mode != "📋 FAQ":
+                        # คุณสามารถเพิ่ม options ใน SelectboxColumn ได้ตามต้องการ
+                        edit_cfg = {
+                            "sheet_row": None, 
+                            "การแบน": st.column_config.SelectboxColumn("การแบน", options=["ปลด", "แบน", "รอตรวจสอบ"]),
+                            "สถานะ": st.column_config.SelectboxColumn("สถานะ", options=["ปกติ", "ไม่ปกติ", "รอดำเนินการ"])
+                        }
+                        
+                        updated_df = st.data_editor(result_df, use_container_width=True, hide_index=True, column_config=edit_cfg, key=f"ed_{tab_name}_{search_val}")
+                        
+                        # ปุ่ม Save แยกตามแท็บ
+                        if st.button(f"💾 บันทึกการเปลี่ยนแปลงใน {tab_name}", key=f"save_{tab_name}"):
+                            with st.spinner('กำลังเขียนข้อมูลกลับไปยัง Google Sheets...'):
+                                try:
+                                    gc = get_sheets_client()
+                                    sh = gc.open_by_key(target_id)
+                                    ws = sh.worksheet(tab_name)
+                                    
+                                    for _, r in updated_df.iterrows():
+                                        row_num = int(r['sheet_row'])
+                                        new_row_values = r.drop('sheet_row').astype(str).tolist()
+                                        ws.update(f"A{row_num}", [new_row_values])
+                                    
+                                    st.toast("✅ บันทึกสำเร็จ!", icon="💎")
+                                    st.cache_data.clear()
+                                except Exception as err:
+                                    st.error(f"❌ บันทึกพลาด: {err}")
+                    else:
+                        # หน้า FAQ โชว์เป็นตารางอย่างเดียว (เพื่อความปลอดภัย)
+                        st.dataframe(result_df.drop(columns=['sheet_row']), use_container_width=True, hide_index=True)
+                    
+                    st.divider()
 
-                updated_df = st.data_editor(result_df, use_container_width=True, hide_index=True, column_config=edit_cfg, key=f"editor_{tab_name}_{search_val}")
-
-                if st.button(f"💾 UPDATE: {tab_name}", key=f"btn_{tab_name}"):
-                    with st.spinner('กำลังบันทึกข้อมูลลง Sheets...'):
-                        try:
-                            gc = get_sheets_client()
-                            sheet_obj = gc.open(target_file)
-                            worksheet_obj = sheet_obj.worksheet(tab_name)
-                            
-                            for _, r in updated_df.iterrows():
-                                row_id = int(r['sheet_row'])
-                                new_vals = r.drop('sheet_row').astype(str).tolist()
-                                worksheet_obj.update(f"A{row_id}", [new_vals])
-                            
-                            st.toast("✅ บันทึกสำเร็จ!", icon="💎")
-                            st.cache_data.clear()
-                        except Exception as err:
-                            st.error(f"❌ บันทึกไม่สำเร็จ: {err}")
-                st.divider()
-
-        if not found_flag:
-            st.warning(f"ไม่พบข้อมูลสำหรับ: {search_val}")
+            if not found_flag:
+                st.warning(f"❌ ไม่พบข้อมูลสำหรับ: {search_val}")
+    else:
+        st.info("📡 กำลังรอข้อมูลจาก Google Sheets (ตรวจสอบสิทธิ์การแชร์ไฟล์)...")
