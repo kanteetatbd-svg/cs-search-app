@@ -3,65 +3,24 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 
-# --- 1. การตั้งค่าหน้าจอและ CSS Premium ---
+# --- 1. การตั้งค่าหน้าจอและ CSS (คงเดิม) ---
 st.set_page_config(page_title="CS Smart Intelligence", page_icon="💎", layout="wide")
-
 st.markdown("""
     <style>
-    .stApp {
-        background: linear-gradient(-45deg, #0f172a, #1e293b, #0f172a, #172554);
-        background-size: 400% 400%;
-        animation: gradient 15s ease infinite;
-    }
-    @keyframes gradient {
-        0% { background-position: 0% 50%; }
-        50% { background-position: 100% 50%; }
-        100% { background-position: 0% 50%; }
-    }
-    [data-testid="stSidebar"] {
-        background-color: rgba(15, 23, 42, 0.6) !important;
-        backdrop-filter: blur(15px);
-        border-right: 1px solid rgba(255, 255, 255, 0.1);
-    }
-    .stImage img {
-        border-radius: 50% !important;
-        border: 3px solid #3b82f6;
-        box-shadow: 0 0 25px rgba(59, 130, 246, 0.5);
-        object-fit: cover;
-        width: 180px !important;
-        height: 180px !important;
-        margin: 0 auto;
-        display: block;
-    }
-    .status-bar-ready {
-        background: rgba(16, 185, 129, 0.15);
-        color: #10b981;
-        padding: 12px 20px;
-        border-radius: 12px;
-        border: 1px solid rgba(16, 185, 129, 0.4);
-        margin-bottom: 25px;
-        font-weight: bold;
-        text-align: center;
-    }
-    .main-header {
-        font-size: 3rem !important;
-        font-weight: 800 !important;
-        background: -webkit-linear-gradient(#eee, #3b82f6);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-    }
+    .stApp { background: linear-gradient(-45deg, #0f172a, #1e293b, #0f172a, #172554); background-size: 400% 400%; animation: gradient 15s ease infinite; }
+    @keyframes gradient { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+    [data-testid="stSidebar"] { background-color: rgba(15, 23, 42, 0.6) !important; backdrop-filter: blur(15px); border-right: 1px solid rgba(255, 255, 255, 0.1); }
+    .stImage img { border-radius: 50% !important; border: 3px solid #3b82f6; box-shadow: 0 0 25px rgba(59, 130, 246, 0.5); object-fit: cover; width: 180px !important; height: 180px !important; margin: 0 auto; display: block; }
+    .status-bar-ready { background: rgba(16, 185, 129, 0.15); color: #10b981; padding: 12px 20px; border-radius: 12px; border: 1px solid rgba(16, 185, 129, 0.4); margin-bottom: 25px; font-weight: bold; text-align: center; }
+    .main-header { font-size: 3rem !important; font-weight: 800 !important; background: -webkit-linear-gradient(#eee, #3b82f6); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
     </style>
     """, unsafe_allow_html=True)
 
 # --- 2. ระบบ Login ---
-USER_DB = {
-    "test123": {"password": "123456", "default_pic": "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"},
-    "admin": {"password": "123456", "default_pic": "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"}
-}
+USER_DB = {"test123": {"password": "123456", "default_pic": "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"}, "admin": {"password": "123456", "default_pic": "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"}}
 
 def login():
-    if "logged_in" not in st.session_state:
-        st.session_state.logged_in = False
+    if "logged_in" not in st.session_state: st.session_state.logged_in = False
     if not st.session_state.logged_in:
         st.markdown("<h1 style='text-align: center; color: white; padding-top: 100px;'>💎 CS INTELLIGENCE</h1>", unsafe_allow_html=True)
         cols = st.columns([1, 2, 1])
@@ -75,17 +34,13 @@ def login():
                         st.session_state.username = user
                         st.session_state.user_pic = USER_DB[user]["default_pic"]
                         st.rerun()
-                    else:
-                        st.error("❌ ข้อมูลไม่ถูกต้อง")
+                    else: st.error("❌ ข้อมูลไม่ถูกต้อง")
         return False
     return True
 
-# --- 3. [CONFIG] ID ไฟล์ Google Sheets ---
+# --- 3. [CONFIG] ID ไฟล์ Google Sheets (ดึงจาก URL ที่พี่ส่งมาแล้ว) ---
 FAQ_SHEET_ID = '1DkCgWps-wR4kaqMQp9eATV2S0uCf8nTe' 
-CASE_SHEET_LIST = [
-    '1x1VKAo6pRU7dtjgliSyR-aX3ZQaGeMW9PdFb2HosGbo', # ปี 2025
-    '1TRTLSmr4Zh9t0aXpVg5IpiYxEAIIKy1PSCEHHIiqNdY'  # ปี 2026
-]
+CASE_SHEET_LIST = ['1x1VKAo6pRU7dtjgliSyR-aX3ZQaGeMW9PdFb2HosGbo', '1TRTLSmr4Zh9t0aXpVg5IpiYxEAIIKy1PSCEHHIiqNdY']
 REFUND_SHEET_ID = '1auT1zB7y9LLJ6EgIaJTjmOPQA2_HZaxhWk2qM-WZzrA'
 
 @st.cache_resource
@@ -106,7 +61,7 @@ def load_data_from_file(sheet_id):
             header_idx = 0
             for i in range(min(15, len(df))):
                 active_cells = sum(1 for val in df.iloc[i] if str(val).strip() != "")
-                # ✅ แก้ไขจุดที่ 1: ลดเกณฑ์เหลือ 1 เพื่อให้รองรับไฟล์ FAQ
+                # ✅ แก้ไขจุดตาย: ปรับเป็น >= 1 เพื่อให้รองรับไฟล์ FAQ
                 if active_cells >= 1: 
                     header_idx = i
                     break
@@ -119,16 +74,14 @@ def load_data_from_file(sheet_id):
             df.columns = processed_headers + ['sheet_row']
             all_tabs[ws.title] = df.iloc[header_idx+1:].reset_index(drop=True)
         return all_tabs
-    except:
-        return None
+    except: return None
 
 # --- 4. Main App Flow ---
 if login():
     with st.sidebar:
         st.write("") 
         c1, c2, c3 = st.columns([1, 10, 1])
-        with c2:
-            st.image(st.session_state.user_pic, use_container_width=True)
+        with c2: st.image(st.session_state.user_pic, use_container_width=True)
         st.markdown(f"<h3 style='text-align: center; color: white;'>คุณ {st.session_state.username}</h3>", unsafe_allow_html=True)
         st.divider()
         app_mode = st.radio("เลือกฟังก์ชัน:", ["📋 FAQ", "🔍 CS Search", "💰 Refund Search"])
@@ -139,13 +92,11 @@ if login():
             st.session_state.logged_in = False
             st.rerun()
 
-    if app_mode == "📋 FAQ":
-        target_id, header_text = FAQ_SHEET_ID, "FAQ DATABASE"
-    elif app_mode == "🔍 CS Search":
-        target_id, header_text = CASE_SHEET_LIST, "CS INTELLIGENCE"
-    else:
-        target_id, header_text = REFUND_SHEET_ID, "REFUND TRACKER"
+    if app_mode == "📋 FAQ": target_id, header_text = FAQ_SHEET_ID, "FAQ DATABASE"
+    elif app_mode == "🔍 CS Search": target_id, header_text = CASE_SHEET_LIST, "CS INTELLIGENCE"
+    else: target_id, header_text = REFUND_SHEET_ID, "REFUND TRACKER"
 
+    # ✅ แก้ไข Syntax Error (ใส่เครื่องหมายคำพูดให้ถูกต้อง)
     st.markdown(f"<h1 class='main-header'>{header_text}</h1>", unsafe_allow_html=True)
 
     master_data = {}
@@ -160,39 +111,31 @@ if login():
 
     if master_data:
         st.markdown('<div class="status-bar-ready">✅ พร้อมใช้งาน</div>', unsafe_allow_html=True)
-        
-        # ช่องค้นหา (Search input)
-        search_val = st.text_input("", placeholder=f"🔍 Ctrl+F: พิมพ์ Keyword ค้นหาใน {app_mode}...", label_visibility="collapsed")
+        search_val = st.text_input("", placeholder=f"🔍 ค้นหาใน {app_mode} (Ctrl+F)...", label_visibility="collapsed")
 
         found = False
         for disp, info in master_data.items():
             df = info["data"]
-            
-            # --- 💡 จุดแก้ไขที่ 2: ปรับปรุงตรรกะหน้า FAQ ---
+            # 💡 สำหรับ FAQ: ถ้าไม่ค้นหาให้โชว์ทั้งหมด ถ้าค้นหาให้กรองข้อมูล
             if app_mode == "📋 FAQ":
                 if search_val:
                     query = search_val.strip().lower()
-                    # ค้นหาจากทุกคอลัมน์เหมือน Ctrl+F
                     mask = df.drop(columns=['sheet_row']).astype(str).apply(lambda r: r.str.lower().str.contains(query).any(), axis=1)
                     res = df[mask]
-                else:
-                    res = df # แสดงทั้งหมดถ้าไม่มีการพิมพ์ค้นหา
+                else: res = df
             else:
                 if search_val:
                     query = search_val.strip().lower()
                     mask = df.drop(columns=['sheet_row']).astype(str).apply(lambda r: r.str.lower().str.contains(query).any(), axis=1)
                     res = df[mask]
-                else:
-                    res = pd.DataFrame()
+                else: res = pd.DataFrame()
 
             if not res.empty:
                 found = True
                 st.markdown(f"<div style='background: rgba(59,130,246,0.1); padding: 15px; border-radius: 12px; border-left: 6px solid #3b82f6; margin: 20px 0;'>📁 หมวดหมู่: <b>{disp}</b></div>", unsafe_allow_html=True)
-                
                 if app_mode != "📋 FAQ":
                     edit_cfg = {"sheet_row": None, "การแบน": st.column_config.SelectboxColumn("การแบน", options=["ปลด", "แบน", "รอตรวจสอบ"]), "สถานะ": st.column_config.SelectboxColumn("สถานะ", options=["ปกติ", "ไม่ปกติ", "รอดำเนินการ"])}
                     updated = st.data_editor(res, use_container_width=True, hide_index=True, column_config=edit_cfg, key=f"ed_{disp}_{search_val}")
-                    
                     if st.button(f"💾 บันทึกใน {disp}", key=f"btn_{disp}"):
                         try:
                             gc = get_sheets_client()
@@ -202,11 +145,6 @@ if login():
                             st.toast("✅ บันทึกสำเร็จ!")
                             st.cache_data.clear()
                         except Exception as e: st.error(f"❌ พลาด: {e}")
-                else:
-                    # ✅ สำหรับ FAQ ใช้ st.table หรือ st.dataframe แบบกว้างๆ ให้อ่านง่าย
-                    st.dataframe(res.drop(columns=['sheet_row']), use_container_width=True, hide_index=True)
-        
-        if search_val and not found:
-            st.warning(f"❌ ไม่พบข้อมูลสำหรับ: {search_val}")
-    else: 
-        st.info("📡 ตรวจสอบ ID ไฟล์และการแชร์สิทธิ์ให้ Service Account")
+                else: st.dataframe(res.drop(columns=['sheet_row']), use_container_width=True, hide_index=True)
+        if search_val and not found: st.warning(f"❌ ไม่พบข้อมูลสำหรับ: {search_val}")
+    else: st.info("📡 ตรวจสอบ ID ไฟล์และการแชร์สิทธิ์ให้ Service Account")
