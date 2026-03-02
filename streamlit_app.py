@@ -3,7 +3,7 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 
-# --- 1. INITIALIZE SESSION (ต้องอยู่บนสุดเพื่อกัน AttributeError) ---
+# --- 1. INITIALIZE SESSION (ป้องกัน Error ตอนยังไม่ Login) ---
 if "logged_in" not in st.session_state: st.session_state.logged_in = False
 if "user" not in st.session_state: st.session_state.user = "Guest"
 
@@ -34,12 +34,11 @@ if not st.session_state.logged_in:
                     st.session_state.logged_in, st.session_state.user = True, u
                     st.rerun()
                 else: st.error("❌ ข้อมูลไม่ถูกต้อง")
-    st.stop() # หยุดการทำงานถ้ายยังไม่ Login
+    st.stop() 
 
-# --- 4. DATA ENGINE (FIXED LOGIC) ---
-FAQ_ID = '1DkCgWps-wR4kaqMQp9eATV2S0uCf8nTe'
-CASE_IDS = ['1x1VKAo6pRU7dtjgliSyR-aX3ZQaGeMW9PdFb2HosGbo', '1TRTLSmr4Zh9t0aXpVg5IpiYxEAIIKy1PSCEHHIiqNdY']
-REFUND_ID = '1auT1zB7y9LLJ6EgIaJTjmOPQA2_HZaxhWk2qM-WZzrA'
+# --- 4. DATA ENGINE (เหลือแค่ CS Search & Refund) ---
+CASE_IDS = [id.strip() for id in ['1x1VKAo6pRU7dtjgliSyR-aX3ZQaGeMW9PdFb2HosGbo', '1TRTLSmr4Zh9t0aXpVg5IpiYxEAIIKy1PSCEHHIiqNdY']]
+REFUND_ID = '1auT1zB7y9LLJ6EgIaJTjmOPQA2_HZaxhWk2qM-WZzrA'.strip()
 
 @st.cache_data(ttl=3600)
 def load_data(sheet_id):
@@ -51,14 +50,14 @@ def load_data(sheet_id):
             data = ws.get_all_values()
             if not data: continue
             df = pd.DataFrame(data)
-            # หา Header อัตโนมัติ (ฉบับแก้พัง)
-            h_idx = next((i for i, row in df.iterrows() if any(str(v).strip() for v in row)), 0)
+            # กลับมาใช้สูตรหา Header > 5 ช่อง เพื่อความแม่นยำกับไฟล์เคสใหญ่ๆ
+            h_idx = next((i for i, row in df.iterrows() if sum(1 for v in row if str(v).strip()) > 5), 0)
             df.columns = [h.strip() if h.strip() else f"Col_{i+1}" for i, h in enumerate(df.iloc[h_idx])]
             df['sheet_row'] = df.index + 1
             tabs[ws.title] = df.iloc[h_idx+1:].reset_index(drop=True)
         return tabs
     except Exception as e:
-        st.sidebar.error(f"❌ ไฟล์ {sheet_id[:5]}... พัง: {str(e)}")
+        st.sidebar.error(f"❌ โหลดไฟล์ {sheet_id[:5]}... พัง: {str(e)}")
         return None
 
 # --- 5. SIDEBAR ---
@@ -66,43 +65,51 @@ with st.sidebar:
     st.image("https://cdn-icons-png.flaticon.com/512/3135/3135715.png")
     st.markdown(f"<h3 style='text-align: center; color: white;'>คุณ {st.session_state.user}</h3>", unsafe_allow_html=True)
     st.divider()
-    mode = st.radio("เลือกฟังก์ชัน:", ["📋 FAQ", "🔍 CS Search", "💰 Refund Search"])
+    mode = st.radio("เลือกฟังก์ชัน:", ["🔍 CS Search", "💰 Refund Search"])
     if st.button("🔄 SYNC DATA", use_container_width=True): st.cache_data.clear(); st.rerun()
     if st.button("🚪 LOGOUT", use_container_width=True): st.session_state.logged_in = False; st.rerun()
 
-# --- 6. UNIFIED CONTENT ---
-target = FAQ_ID if mode == "📋 FAQ" else (CASE_IDS if mode == "🔍 CS Search" else REFUND_ID)
+# --- 6. MAIN SYSTEM ---
+target = CASE_IDS if mode == "🔍 CS Search" else REFUND_ID
 st.markdown(f"<h1 class='main-header'>{mode.split(' ')[1]} SYSTEM</h1>", unsafe_allow_html=True)
 
 master = {}
 ids = target if isinstance(target, list) else [target]
-for s_id in ids:
-    res = load_data(s_id)
-    if res:
-        for tab, df in res.items():
-            master[f"{tab} ({s_id[-4:]})" if len(ids) > 1 else tab] = {"df": df, "id": s_id, "tab": tab}
+with st.spinner('กำลังเชื่อมต่อฐานข้อมูล...'):
+    for s_id in ids:
+        res = load_data(s_id)
+        if res:
+            for tab, df in res.items():
+                # ห้อยท้ายปีให้รู้ว่าไฟล์ไหนเป็นของปีไหน
+                master[f"{tab} ({s_id[-4:]})" if len(ids) > 1 else tab] = {"df": df, "id": s_id, "tab": tab}
 
 if master:
     st.markdown('<div class="status-bar-ready">✅ พร้อมใช้งาน</div>', unsafe_allow_html=True)
     q = st.text_input("", placeholder=f"🔍 ค้นหาใน {mode}...", label_visibility="collapsed").strip().lower()
     
-    for name, info in master.items():
-        df = info["df"]
-        # กรองข้อมูล (FAQ โชว์หมด / Search ต้องพิมพ์)
-        mask = df.drop(columns=['sheet_row']).astype(str).apply(lambda r: r.str.lower().str.contains(q).any(), axis=1) if q else (True if mode == "📋 FAQ" else False)
-        res_df = df[mask] if isinstance(mask, pd.Series) else (df if mask else pd.DataFrame())
-        
-        if not res_df.empty:
-            st.markdown(f"<div style='border-left: 5px solid #3b82f6; padding-left: 15px; margin: 20px 0;'>📁 หมวดหมู่: <b>{name}</b></div>", unsafe_allow_html=True)
-            if mode != "📋 FAQ":
+    if q:
+        found_any = False
+        for name, info in master.items():
+            df = info["df"]
+            # ค้นหาทุกคอลัมน์
+            mask = df.drop(columns=['sheet_row']).astype(str).apply(lambda r: r.str.lower().str.contains(q).any(), axis=1)
+            res_df = df[mask]
+            
+            if not res_df.empty:
+                found_any = True
+                st.markdown(f"<div style='border-left: 5px solid #3b82f6; padding-left: 15px; margin: 20px 0;'>📁 หมวดหมู่: <b>{name}</b></div>", unsafe_allow_html=True)
+                
                 cfg = {"sheet_row": None, "การแบน": st.column_config.SelectboxColumn("การแบน", options=["ปลด", "แบน", "รอตรวจสอบ"]), "สถานะ": st.column_config.SelectboxColumn("สถานะ", options=["ปกติ", "ไม่ปกติ", "รอดำเนินการ"])}
                 upd = st.data_editor(res_df, use_container_width=True, hide_index=True, column_config=cfg, key=f"ed_{name}_{q}")
+                
                 if st.button(f"💾 SAVE: {name}", key=f"btn_{name}"):
                     try:
-                        ws = gspread.authorize(Credentials.from_service_account_file('key.json', scopes=['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive'])).open_by_key(info["id"]).worksheet(info["tab"])
+                        gc = gspread.authorize(Credentials.from_service_account_file('key.json', scopes=['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']))
+                        ws = gc.open_by_key(info["id"]).worksheet(info["tab"])
                         for _, r in upd.iterrows(): ws.update(f"A{int(r['sheet_row'])}", [r.drop('sheet_row').astype(str).tolist()])
                         st.toast("✅ บันทึกสำเร็จ!"); st.cache_data.clear()
                     except Exception as e: st.error(f"❌ พลาด: {e}")
-            else: st.dataframe(res_df.drop(columns=['sheet_row']), use_container_width=True, hide_index=True)
+
+        if not found_any: st.warning(f"❌ ไม่พบข้อมูลสำหรับ: {q}")
 else:
     st.info("📡 กรุณาตรวจสอบ ID ไฟล์และการแชร์สิทธิ์ให้ Service Account")
