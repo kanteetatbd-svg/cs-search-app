@@ -93,7 +93,7 @@ with st.sidebar:
     
     mode = st.radio("เลือกฟังก์ชัน:", ["🔍 CS Search", "💰 Refund Search", "📋 ประวัติการแก้ไข"])
     
-    if st.button("🔄 SYNC DATA (อัปเดตข้อมูล)", use_container_width=True): 
+    if st.button("🔄 SYNC DATA", use_container_width=True): 
         st.cache_data.clear()
         st.session_state.loaded_sheets = {} 
         st.rerun()
@@ -145,9 +145,9 @@ else:
                 master[f"{tab} ({s_id[-4:]})" if len(target_ids) > 1 else tab] = {"df": df, "id": s_id, "tab": tab}
 
     if master:
-        st.markdown('<div class="status-bar-ready">✅ ระบบพร้อม! ค้นหาไวระดับ SQL Database</div>', unsafe_allow_html=True)
+        st.markdown('<div class="status-bar-ready">✅ ระบบพร้อมใช้งาน!</div>', unsafe_allow_html=True)
         
-        q_raw = st_keyup("", placeholder=f"⚡ พิมพ์ Keyword ค้นหาใน {mode} (เว้นวรรคเพื่อหาหลายคำได้)...", label_visibility="collapsed", key=f"search_{mode}", debounce=300)
+        q_raw = st_keyup("", placeholder=f"⚡ พิมพ์ Keyword ค้นหา..", label_visibility="collapsed", key=f"search_{mode}", debounce=300)
         q = str(q_raw).strip().lower() if q_raw else ""
         
         if q:
