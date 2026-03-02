@@ -3,8 +3,6 @@ import pandas as pd
 import gspread
 import time  
 import duckdb  
-import io 
-import google.auth.transport.requests 
 from st_keyup import st_keyup  
 from google.oauth2.service_account import Credentials
 
@@ -69,38 +67,30 @@ def load_data(sheet_id, target_tabs=None):
         gc = gspread.authorize(creds)
         sh = gc.open_by_key(sheet_id)
         
-        authed_session = google.auth.transport.requests.AuthorizedSession(creds)
-        
         tabs = {}
         for ws in sh.worksheets():
             ws_title = ws.title.strip()
             
-            # ข้ามแท็บที่ไม่เกี่ยวทันที!
+            # 🚀 ระบบข้ามแท็บ: ถ้ามีรายชื่อแท็บเป้าหมาย แล้วแท็บนี้ไม่อยู่ในรายชื่อ ให้ข้ามไปเลย!
             if target_tabs and len(target_tabs) > 0 and ws_title not in target_tabs:
                 continue
                 
+            # 🚀 ใช้ท่ามาตรฐาน get_all_values() ที่เสถียรที่สุด 100% ไม่มีพัง
             max_retries = 3
-            df = pd.DataFrame()
+            data = None
             for attempt in range(max_retries):
                 try:
-                    url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={ws.id}"
-                    response = authed_session.get(url, timeout=15)
-                    
-                    if response.status_code == 429:
-                        time.sleep(5)
-                        continue
-                        
-                    response.raise_for_status()
-                    df = pd.read_csv(io.StringIO(response.text), header=None, dtype=str).fillna("")
+                    data = ws.get_all_values()
                     break 
                 except Exception as e:
-                    if hasattr(response, 'status_code') and response.status_code == 429: 
-                        time.sleep(5)  
+                    if "429" in str(e): 
+                        time.sleep(10)  
                     else:
-                        if attempt == max_retries - 1: raise e
+                        raise e 
             
-            if df.empty: continue
+            if not data: continue
             
+            df = pd.DataFrame(data)
             try:
                 h_idx = next((i for i, row in df.iterrows() if sum(1 for v in row if str(v).strip()) > 5), 0)
                 df.columns = [h.strip() if h.strip() else f"Col_{i+1}" for i, h in enumerate(df.iloc[h_idx])]
@@ -110,7 +100,8 @@ def load_data(sheet_id, target_tabs=None):
             except:
                 continue
                 
-            time.sleep(0.5)
+            # พัก 1.5 วินาที กัน Google แบน
+            time.sleep(1.5)
             
         return tabs
     except Exception as e:
@@ -133,7 +124,6 @@ with st.sidebar:
     if st.button("🚪 LOGOUT", use_container_width=True): 
         st.session_state.logged_in = False
         st.rerun()
-
 
 # --- 6. MAIN SYSTEM (Lazy Load โหลดเฉพาะหน้าที่เปิด) ---
 if mode == "📋 ประวัติการแก้ไข":
@@ -173,7 +163,7 @@ else:
     # 🚀 โหลดข้อมูลเฉพาะ ID ที่เกี่ยวข้องกับหน้านี้เท่านั้น
     for s_id in target_ids:
         if s_id not in st.session_state.loaded_sheets:
-            with st.spinner(f'กำลังโหลดข้อมูลลงฐานข้อมูล... ⚡'):
+            with st.spinner(f'กำลังโหลดข้อมูล... ⚡'):
                 st.session_state.loaded_sheets[s_id] = load_data(s_id, target_tabs=target_tabs)
 
         res = st.session_state.loaded_sheets.get(s_id)
