@@ -3,7 +3,7 @@ import pandas as pd
 import gspread
 from google.oauth2.service_account import Credentials
 
-# --- 1. การตั้งค่าหน้าจอและ CSS Premium (คงเดิมไว้ 100%) ---
+# --- 1. การตั้งค่าหน้าจอและ CSS Premium ---
 st.set_page_config(page_title="CS Smart Intelligence", page_icon="💎", layout="wide")
 
 st.markdown("""
@@ -53,7 +53,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. ระบบ Login (คงเดิม) ---
+# --- 2. ระบบ Login ---
 USER_DB = {
     "test123": {"password": "123456", "default_pic": "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"},
     "admin": {"password": "123456", "default_pic": "https://cdn-icons-png.flaticon.com/512/3135/3135715.png"}
@@ -80,7 +80,7 @@ def login():
         return False
     return True
 
-# --- 3. [CONFIG] ID ไฟล์ Google Sheets (คงเดิม) ---
+# --- 3. [CONFIG] ID ไฟล์ Google Sheets ---
 FAQ_SHEET_ID = '1DkCgWps-wR4kaqMQp9eATV2S0uCf8nTe' 
 CASE_SHEET_LIST = [
     '1x1VKAo6pRU7dtjgliSyR-aX3ZQaGeMW9PdFb2HosGbo', # ปี 2025
@@ -106,7 +106,8 @@ def load_data_from_file(sheet_id):
             header_idx = 0
             for i in range(min(15, len(df))):
                 active_cells = sum(1 for val in df.iloc[i] if str(val).strip() != "")
-                if active_cells > 5:
+                # ✅ แก้ไขจุดที่ 1: ลดเกณฑ์เหลือ 1 เพื่อให้รองรับไฟล์ FAQ
+                if active_cells >= 1: 
                     header_idx = i
                     break
             headers = df.iloc[header_idx].astype(str).tolist()
@@ -138,9 +139,8 @@ if login():
             st.session_state.logged_in = False
             st.rerun()
 
-    # ตั้งค่าหัวข้อและไฟล์เป้าหมาย
     if app_mode == "📋 FAQ":
-        target_id, header_text = FAQ_SHEET_ID, "FAQ"
+        target_id, header_text = FAQ_SHEET_ID, "FAQ DATABASE"
     elif app_mode == "🔍 CS Search":
         target_id, header_text = CASE_SHEET_LIST, "CS INTELLIGENCE"
     else:
@@ -148,7 +148,6 @@ if login():
 
     st.markdown(f"<h1 class='main-header'>{header_text}</h1>", unsafe_allow_html=True)
 
-    # โหลดข้อมูล
     master_data = {}
     with st.spinner('กำลังเชื่อมต่อฐานข้อมูล...'):
         ids = target_id if isinstance(target_id, list) else [target_id]
@@ -163,22 +162,22 @@ if login():
         st.markdown('<div class="status-bar-ready">✅ พร้อมใช้งาน</div>', unsafe_allow_html=True)
         
         # ช่องค้นหา (Search input)
-        search_val = st.text_input("", placeholder=f"🔍 ค้นหาใน {app_mode}...", label_visibility="collapsed")
+        search_val = st.text_input("", placeholder=f"🔍 Ctrl+F: พิมพ์ Keyword ค้นหาใน {app_mode}...", label_visibility="collapsed")
 
         found = False
         for disp, info in master_data.items():
             df = info["data"]
             
-            # --- 💡 ปรับปรุงตรรกะหน้า FAQ ให้แสดงผลทันที ---
+            # --- 💡 จุดแก้ไขที่ 2: ปรับปรุงตรรกะหน้า FAQ ---
             if app_mode == "📋 FAQ":
                 if search_val:
                     query = search_val.strip().lower()
+                    # ค้นหาจากทุกคอลัมน์เหมือน Ctrl+F
                     mask = df.drop(columns=['sheet_row']).astype(str).apply(lambda r: r.str.lower().str.contains(query).any(), axis=1)
                     res = df[mask]
                 else:
                     res = df # แสดงทั้งหมดถ้าไม่มีการพิมพ์ค้นหา
             else:
-                # สำหรับหน้า Search และ Refund ต้องพิมพ์ก่อนถึงจะแสดงผล (เพื่อความเร็ว)
                 if search_val:
                     query = search_val.strip().lower()
                     mask = df.drop(columns=['sheet_row']).astype(str).apply(lambda r: r.str.lower().str.contains(query).any(), axis=1)
@@ -186,13 +185,11 @@ if login():
                 else:
                     res = pd.DataFrame()
 
-            # แสดงตารางผลลัพธ์
             if not res.empty:
                 found = True
                 st.markdown(f"<div style='background: rgba(59,130,246,0.1); padding: 15px; border-radius: 12px; border-left: 6px solid #3b82f6; margin: 20px 0;'>📁 หมวดหมู่: <b>{disp}</b></div>", unsafe_allow_html=True)
                 
                 if app_mode != "📋 FAQ":
-                    # ส่วนแก้ไขข้อมูล (Data Editor)
                     edit_cfg = {"sheet_row": None, "การแบน": st.column_config.SelectboxColumn("การแบน", options=["ปลด", "แบน", "รอตรวจสอบ"]), "สถานะ": st.column_config.SelectboxColumn("สถานะ", options=["ปกติ", "ไม่ปกติ", "รอดำเนินการ"])}
                     updated = st.data_editor(res, use_container_width=True, hide_index=True, column_config=edit_cfg, key=f"ed_{disp}_{search_val}")
                     
@@ -204,10 +201,9 @@ if login():
                                 ws.update(f"A{int(r['sheet_row'])}", [r.drop('sheet_row').astype(str).tolist()])
                             st.toast("✅ บันทึกสำเร็จ!")
                             st.cache_data.clear()
-                        except Exception as e: 
-                            st.error(f"❌ พลาด: {e}")
+                        except Exception as e: st.error(f"❌ พลาด: {e}")
                 else:
-                    # หน้า FAQ แสดงผลอย่างเดียวแบบ Read-only
+                    # ✅ สำหรับ FAQ ใช้ st.table หรือ st.dataframe แบบกว้างๆ ให้อ่านง่าย
                     st.dataframe(res.drop(columns=['sheet_row']), use_container_width=True, hide_index=True)
         
         if search_val and not found:
