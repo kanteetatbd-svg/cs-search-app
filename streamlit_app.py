@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
 import gspread
-import time  # 👈 เพิ่มระบบหน่วงเวลา
-from st_keyup import st_keyup  # 👈 เพิ่มระบบค้นหา Real-time
+import time  
+from st_keyup import st_keyup  
 from google.oauth2.service_account import Credentials
 
 # --- 1. INITIALIZE SESSION (ป้องกัน Error ตอนยังไม่ Login) ---
@@ -50,15 +50,24 @@ def load_data(sheet_id):
         tabs = {}
         for ws in sh.worksheets():
             data = ws.get_all_values()
-            if not data: continue
-            df = pd.DataFrame(data)
-            h_idx = next((i for i, row in df.iterrows() if sum(1 for v in row if str(v).strip()) > 5), 0)
-            df.columns = [h.strip() if h.strip() else f"Col_{i+1}" for i, h in enumerate(df.iloc[h_idx])]
-            df['sheet_row'] = df.index + 1
-            tabs[ws.title] = df.iloc[h_idx+1:].reset_index(drop=True)
             
-            # 🛑 ระบบหน่วงเวลา 1.5 วินาที กัน Google บล็อก Quota Exceeded
-            time.sleep(1.5)
+            # ถ้าแท็บว่าง ให้ข้ามไปเลยไม่ต้องเสียเวลาพัก
+            if not data: 
+                continue
+                
+            df = pd.DataFrame(data)
+            
+            # กันเหนียว: ถ้าจัดเรียงหัวตารางพัง ให้ข้ามแท็บนั้นไปเลย
+            try:
+                h_idx = next((i for i, row in df.iterrows() if sum(1 for v in row if str(v).strip()) > 5), 0)
+                df.columns = [h.strip() if h.strip() else f"Col_{i+1}" for i, h in enumerate(df.iloc[h_idx])]
+                df['sheet_row'] = df.index + 1
+                tabs[ws.title] = df.iloc[h_idx+1:].reset_index(drop=True)
+            except:
+                continue
+            
+            # 🚀 หน่วงเวลาแค่ 0.4 วิ เพื่อให้โหลดเร็วขึ้นแต่ Google ไม่บล็อก
+            time.sleep(0.4)
             
         return tabs
     except Exception as e:
@@ -80,7 +89,7 @@ st.markdown(f"<h1 class='main-header'>{mode.split(' ')[1]} SYSTEM</h1>", unsafe_
 
 master = {}
 ids = target if isinstance(target, list) else [target]
-with st.spinner('กำลังเชื่อมต่อฐานข้อมูล... (อาจใช้เวลาเล็กน้อยเพื่อป้องกันระบบถูกบล็อก)'):
+with st.spinner('กำลังเชื่อมต่อฐานข้อมูล... (อาจใช้เวลาเล็กน้อยในการดึงข้อมูลครั้งแรก)'):
     for s_id in ids:
         res = load_data(s_id)
         if res:
@@ -90,8 +99,8 @@ with st.spinner('กำลังเชื่อมต่อฐานข้อม
 if master:
     st.markdown('<div class="status-bar-ready">✅ พร้อมใช้งาน</div>', unsafe_allow_html=True)
     
-    # ⚡ เปลี่ยนมาใช้ st_keyup สำหรับระบบ "พิมพ์ปุ๊บเจอปั๊บ"
-    q_raw = st_keyup("", placeholder=f"⚡ พิมพ์ค้นหาปุ๊บ เจอปั๊บใน {mode}...", label_visibility="collapsed", key=f"search_{mode}")
+    # ⚡ ระบบพิมพ์ปุ๊บ เจอปั๊บ
+    q_raw = st_keyup("", placeholder=f"{mode}...", label_visibility="collapsed", key=f"search_{mode}")
     q = str(q_raw).strip().lower() if q_raw else ""
     
     if q:
