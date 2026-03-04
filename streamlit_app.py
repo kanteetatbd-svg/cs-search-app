@@ -24,14 +24,13 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 3. LOGIN LOGIC & ROLES ---
+# --- 3. LOGIN LOGIC ---
 USER_DB = {
     "test123": "123456", 
     "admin": "123456",
     "leader01": "123456", 
     "cs_staff": "123456"  
 }
-# 🚀 รายชื่อผู้มีสิทธิ์ดูเมนู "ประวัติการแก้ไข" (Audit Log)
 ADMIN_USERS = ["admin", "test123", "leader01"]
 
 if not st.session_state.logged_in:
@@ -58,42 +57,31 @@ def load_data(sheet_id):
         creds = Credentials.from_service_account_file('key.json', scopes=['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive'])
         gc = gspread.authorize(creds)
         sh = gc.open_by_key(sheet_id)
-        
         tabs = {}
         worksheets = sh.worksheets()
         
-        # แสดงความคืบหน้าแบบ Real-time
         progress_info = st.empty()
-        
         for i, ws in enumerate(worksheets):
-            progress_info.info(f"⏳ กำลังดึงข้อมูลจากแท็บ: **{ws.title}** ({i+1}/{len(worksheets)})")
-            
+            progress_info.info(f"⏳ กำลังดึงข้อมูล: **{ws.title}**")
             max_retries = 3
             data = None
             for attempt in range(max_retries):
                 try:
                     data = ws.get_all_values()
                     break 
-                except Exception as e:
-                    if "429" in str(e): 
-                        time.sleep(10) # พักหายใจถ้าโดน Google บล็อก
-                    else: 
-                        raise e 
+                except:
+                    time.sleep(10)
             
             if not data: continue
             df = pd.DataFrame(data)
             try:
-                # หาบรรทัดที่เป็นหัวตาราง (มีข้อมูลมากกว่า 5 คอลัมน์)
                 h_idx = next((i for i, row in df.iterrows() if sum(1 for v in row if str(v).strip()) > 5), 0)
                 df.columns = [h.strip() if h.strip() else f"Col_{i+1}" for i, h in enumerate(df.iloc[h_idx])]
                 df['sheet_row'] = df.index + 1
-                # สร้าง Search Index สำหรับการค้นหาความเร็วสูง
                 df['search_index'] = df.astype(str).agg(' '.join, axis=1).str.lower()
                 tabs[ws.title] = df.iloc[h_idx+1:].reset_index(drop=True)
-            except: 
-                continue
-                
-            time.sleep(1.2) # เบรกเล็กน้อยลดภาระ Google API
+            except: continue
+            time.sleep(1.2)
             
         progress_info.empty()
         return tabs
@@ -107,18 +95,15 @@ with st.sidebar:
     st.markdown(f"<h3 style='text-align: center; color: white;'>คุณ {st.session_state.user}</h3>", unsafe_allow_html=True)
     st.divider()
     
-    # 🚀 กรองเมนูตามสิทธิ์การเข้าถึง
     menu = ["🔍 CS Search", "💰 Refund Search"]
     if st.session_state.user in ADMIN_USERS:
         menu.append("📋 ประวัติการแก้ไข")
-    
     mode = st.radio("เลือกฟังก์ชัน:", menu)
     
     if st.button("🔄 SYNC DATA", use_container_width=True): 
         st.cache_data.clear()
         st.session_state.loaded_sheets = {} 
         st.rerun()
-        
     if st.button("🚪 LOGOUT", use_container_width=True): 
         st.session_state.logged_in = False
         st.rerun()
@@ -126,8 +111,7 @@ with st.sidebar:
 # --- 6. MAIN SYSTEM ---
 if mode == "📋 ประวัติการแก้ไข":
     st.markdown("<h1 class='main-header'>AUDIT LOGS</h1>", unsafe_allow_html=True)
-    st.markdown("ตรวจสอบประวัติการแก้ไขข้อมูลทั้งหมดโดยไม่ต้องเปิด Google Sheets")
-    with st.spinner("กำลังดึงข้อมูลประวัติ..."):
+    with st.spinner("กำลังดึงประวัติ..."):
         try:
             gc = gspread.authorize(Credentials.from_service_account_file('key.json', scopes=['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']))
             log_ws = gc.open_by_key(AUDIT_LOG_ID).sheet1
@@ -135,26 +119,24 @@ if mode == "📋 ประวัติการแก้ไข":
             if len(log_data) > 1:
                 df_log = pd.DataFrame(log_data[1:], columns=log_data[0])
                 st.dataframe(df_log.iloc[::-1], use_container_width=True, hide_index=True)
-            else: 
-                st.info("💡 ยังไม่มีประวัติการแก้ไข")
-        except Exception as e: 
-            st.error(f"❌ ดึงประวัติพัง: {e}")
+            else: st.info("💡 ยังไม่มีประวัติ")
+        except Exception as e: st.error(f"❌ ดึงประวัติพัง: {e}")
 
 else:
-    # 🚀 ระบบ Lazy Load: เลือกหน้าไหน โหลดเฉพาะไฟล์ที่เกี่ยวข้อง
     target_ids = CASE_IDS if mode == "🔍 CS Search" else [REFUND_ID]
     st.markdown(f"<h1 class='main-header'>{mode.split(' ')[1]} SYSTEM</h1>", unsafe_allow_html=True)
 
     master = {}
     for s_id in target_ids:
         if s_id not in st.session_state.loaded_sheets:
-            with st.spinner(f'กำลังเชื่อมต่อฐานข้อมูล... กรุณารอสักครู่ ⚡'):
+            with st.spinner(f'กำลังเชื่อมต่อฐานข้อมูล... ⚡'):
                 st.session_state.loaded_sheets[s_id] = load_data(s_id)
         
         res = st.session_state.loaded_sheets.get(s_id)
         if res:
             for tab, df in res.items():
-                master[f"{tab} ({s_id[-4:]})" if len(target_ids) > 1 else tab] = {"df": df, "id": s_id, "tab": tab}
+                # 🚀 แก้ไขบรรทัดนี้: ใช้ชื่อแท็บเพียวๆ ไม่ต้องมีรหัสท้าย
+                master[tab] = {"df": df, "id": s_id, "tab": tab}
 
     if master:
         st.markdown('<div class="status-bar-ready">✅ ระบบพร้อมใช้งาน!</div>', unsafe_allow_html=True)
@@ -166,28 +148,20 @@ else:
             search_words = q.split()
             for name, info in master.items():
                 df = info["df"]
-                # 🚀 ค้นหาความเร็วสูงผ่าน DuckDB
                 conditions = " AND ".join([f"search_index LIKE '%{w}%'" for w in search_words])
                 sql_query = f"SELECT * FROM df WHERE {conditions}"
-                try: 
-                    res_df = duckdb.query(sql_query).to_df()
-                except: 
-                    res_df = pd.DataFrame()
+                try: res_df = duckdb.query(sql_query).to_df()
+                except: res_df = pd.DataFrame()
                 
                 if not res_df.empty:
-                    # 🚀 กรองข้อมูลซ้ำ (Deduplicate)
                     check_cols = [c for c in res_df.columns if c not in ['sheet_row', 'search_index']]
                     res_df = res_df.drop_duplicates(subset=check_cols)
-                    
                     found_any = True
+                    # 🚀 แสดงชื่อหมวดหมู่แบบคลีนๆ
                     st.markdown(f"<div style='border-left: 5px solid #10b981; padding-left: 15px; margin: 20px 0;'>📁 หมวดหมู่: <b>{name}</b></div>", unsafe_allow_html=True)
                     
                     display_df = res_df.drop(columns=['search_index'])
-                    cfg = {
-                        "sheet_row": None, 
-                        "การแบน": st.column_config.SelectboxColumn("การแบน", options=["ปลด", "แบน", "รอตรวจสอบ"]), 
-                        "สถานะ": st.column_config.SelectboxColumn("สถานะ", options=["ปกติ", "ไม่ปกติ", "รอดำเนินการ"])
-                    }
+                    cfg = {"sheet_row": None, "การแบน": st.column_config.SelectboxColumn("การแบน", options=["ปลด", "แบน", "รอตรวจสอบ"]), "สถานะ": st.column_config.SelectboxColumn("สถานะ", options=["ปกติ", "ไม่ปกติ", "รอดำเนินการ"])}
                     upd = st.data_editor(display_df, use_container_width=True, hide_index=True, column_config=cfg, key=f"ed_{name}_{q}")
                     
                     if st.button(f"💾 SAVE: {name}", key=f"btn_{name}"):
@@ -201,19 +175,9 @@ else:
                                 for _, r in changed_rows.iterrows():
                                     upd_list = [str(r[col]) for col in display_df.columns if col != 'sheet_row']
                                     ws.update(f"A{int(r['sheet_row'])}", [upd_list])
-                                    
-                                    # บันทึกลง Audit Log
                                     log_ws = gc.open_by_key(AUDIT_LOG_ID).sheet1
                                     log_ws.append_row([curr_time, st.session_state.user, name, int(r['sheet_row']), str(upd_list)])
-                                    
-                                st.toast("✅ บันทึกสำเร็จ!"); 
-                                st.cache_data.clear(); 
-                                st.session_state.loaded_sheets = {}; 
-                                time.sleep(1); 
-                                st.rerun()
-                            else:
-                                st.info("💡 ไม่มีการเปลี่ยนแปลงข้อมูล")
-                        except Exception as e: 
-                            st.error(f"❌ พลาด: {e}")
-            if not found_any: 
-                st.warning(f"❌ ไม่พบข้อมูลสำหรับ: {q}")
+                                st.toast("✅ บันทึกสำเร็จ!"); st.cache_data.clear(); st.session_state.loaded_sheets = {}; time.sleep(1); st.rerun()
+                            else: st.info("💡 ไม่มีการเปลี่ยนแปลง")
+                        except Exception as e: st.error(f"❌ พลาด: {e}")
+            if not found_any: st.warning(f"❌ ไม่พบข้อมูลสำหรับ: {q}")
